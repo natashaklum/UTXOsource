@@ -15,21 +15,40 @@ utxoproof answers three questions:
 
 ## Status
 
-Sprint 0 (foundation) is done: rp2 + Belgian plugin produce a verified tax
-number, the full SQLite schema exists, and `utxoproof compute` works on
-synthetic data. Sprint 1 (Kraken CSV + price oracle) and the first HTML tax
-report are done too — demo reports build from fixture data and publish to
-GitHub Pages on every `main` push (enable in repo Settings → Pages → Source:
-GitHub Actions). See the sprint roadmap in `utxo-source-plan_v5.md` for what
-comes next.
+Implemented and covered by tests + live regtest runs: exchange imports
+(Kraken, Coinbase, Binance, Bisq) and Belgian bank parsing, EUR price oracle,
+Belgian classifier with `utxoproof.toml`, HTML reports (tax, status, privacy,
+advisory, provenance, all-time) with evidence ZIPs, KYC propagation, on-chain
+descriptor sync against Bitcoin Core, and demo reports published to GitHub
+Pages on every `main` push. See the sprint roadmap in `utxo-source-plan_v5.md`
+for what remains.
 
-## Quickstart (Sprint 0)
+## Installation
 
 Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 
+Native:
+
 ```bash
+git clone --recurse-submodules https://github.com/natashaklum/UTXOsource
+cd UTXOsource
 uv venv
 VIRTUAL_ENV=.venv uv pip install -e ".[dev]"
+cp utxoproof.example.toml utxoproof.toml  # then edit municipality rate etc.
+```
+
+Docker (mainnet stack per `docker-compose.yml`; regtest dev stack in
+`docker-compose.regtest.yml`):
+
+```bash
+cp utxoproof.example.toml utxoproof.toml
+mkdir -p sources output
+docker compose run --rm utxoproof sync --rpc-url http://bitcoind:8332 ...
+```
+
+## Quickstart
+
+```bash
 .venv/bin/utxoproof compute --input tests/fixtures/manual_2023.csv --year 2023
 .venv/bin/utxoproof status --input tests/fixtures/manual_2023.csv --price 40000
 .venv/bin/utxoproof report --input tests/fixtures/manual_2023.csv --year 2023 --out /tmp/utxo-report
@@ -46,11 +65,11 @@ On-chain (needs a node; regtest via `docker-compose.regtest.yml`):
   --rpc-password utxoproof-test --wallet utxoproof_watchonly
 ```
 
-Checks:
+Checks (see [CONTRIBUTING.md](CONTRIBUTING.md)):
 
 ```bash
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
-.venv/bin/mypy utxoproof/
+.venv/bin/mypy utxoproof/ scripts/
 .venv/bin/python -m pytest
 ```
 
@@ -59,11 +78,17 @@ Checks:
 ```text
 utxoproof/
   belgian_tax.py  # 33% flat + communal surcharge, proportional fee-split
-  cli.py          # Sprint 0: `compute --input --year` (grows into `report`)
-  db.py           # SQLite init
-  schema.sql      # Full Sec. 8 schema (transactions, tx graph, prices, KYC…)
+  cli.py          # compute/report/status/privacy/advise/provenance/setup/sync
+  db.py + schema.sql  # Sec. 8 SQLite schema (tx graph, prices, KYC…)
+  exchange.py + kraken_csv.py / coinbase_csv.py / binance_csv.py / bisq_csv.py
+  banks.py + matching.py  # Belgian bank profiles, fiat-leg matcher
+  price_oracle.py  # Kraken OHLC + CoinGecko + ECB, SQLite cache
+  classifier.py + config.py  # Sec. 6 scores, utxoproof.toml
+  descriptors.py  # BIP32/84 templates + address derivation (embit)
+  bitcoin_rpc.py + onchain.py  # Core JSON-RPC, tx-graph sync
+  kyc.py + advisory.py + provenance.py + evidence.py + reports.py
 tests/
-  fixtures/manual_2023.csv  # 12 synthetic rows, gain cross-checked by hand
+  fixtures/  # synthetic only, hand-verified, never real data
 ```
 
 ## rp2 fork

@@ -21,7 +21,7 @@ jobs:
         run: ruff format --check .
 
       - name: Type check
-        run: mypy utxoproof/
+        run: mypy utxoproof/ scripts/
 
       - name: Test
         run: pytest
@@ -54,3 +54,16 @@ jobs:
 
       - name: Regtest end-to-end
         run: pytest -m regtest -p no:cacheprovider --no-cov
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Build image
+        run: docker build -t utxoproof .
+
+      - name: Smoke test
+        run: docker run --rm utxoproof --version

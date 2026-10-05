@@ -1,0 +1,44 @@
+# Mainnet stack (plan Sec. 19). For development/testing use
+# docker-compose.regtest.yml instead (no real funds, instant blocks).
+services:
+  bitcoind:
+    image: lncm/bitcoind:v25.1
+    restart: unless-stopped
+    command:
+      - -server=1
+      - -rpcuser=${BITCOIN_RPC_USER:-bitcoinrpc}
+      - -rpcpassword=${BITCOIN_RPC_PASSWORD:-CHANGE_THIS}
+      - -rpcallowip=172.16.0.0/12
+      - -rpcbind=0.0.0.0
+      - -txindex=0
+      - -prune=0
+      - -disablewallet=0
+    volumes:
+      - bitcoind_data:/data/.bitcoin
+    ports:
+      - "127.0.0.1:8332:8332"
+    networks:
+      - utxoproof_net
+
+  utxoproof:
+    build: .
+    depends_on:
+      - bitcoind
+    volumes:
+      - ./utxoproof.toml:/app/utxoproof.toml:ro
+      - utxoproof_data:/data
+      - ./sources:/data/sources:ro
+      - ./output:/data/output
+    networks:
+      - utxoproof_net
+    environment:
+      - UTXOPROOF_DB=/data/utxoproof.db
+    # Run interactively, e.g.:
+    # docker compose run --rm utxoproof sync --rpc-url http://bitcoind:8332 ...
+
+volumes:
+  bitcoind_data:
+  utxoproof_data:
+
+networks:
+  utxoproof_net:

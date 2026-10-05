@@ -61,6 +61,9 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
 - Evidence lives in `utxoproof/evidence.py` (SHA-256 manifest, content dedupe,
   ZIP bundle). `utxoproof report --year Y [--source F]...` builds it unless
   `--no-zip`; `report --alltime` writes the per-year summary (no ZIP).
+- Packaging: `Dockerfile` (+`.dockerignore`), `docker-compose.yml` (mainnet)
+  and `docker-compose.regtest.yml` (dev). CI `docker` job builds + smoke-tests
+  the image (no docker on dev boxes, so image builds are CI-only).
 - Classification lives in `utxoproof/classifier.py` (Sec. 6 scores) with signals
   from `signals_from_csv`; config in `utxoproof/config.py` (`utxoproof.toml`,
   example at `utxoproof.example.toml`). `utxoproof report --config` applies
