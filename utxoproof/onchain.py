@@ -15,6 +15,7 @@ from decimal import Decimal
 from typing import Any
 
 from utxoproof.bitcoin_rpc import BitcoinRPC, BitcoinRPCError
+from utxoproof.descriptors import with_checksum
 
 SAT_PER_BTC = 100_000_000
 
@@ -43,11 +44,21 @@ class BitcoinCoreOnchainImporter:
             if "already exists" not in str(exc):
                 raise
 
-    def import_descriptor(self, wallet: str, descriptor: str, timestamp: int | str) -> None:
-        """Import one ranged descriptor without rescan orchestration (Sprint 3)."""
+    def import_descriptor(self, wallet: str, descriptor: str, timestamp: int | str = "now") -> None:
+        """Import one ranged descriptor without rescan orchestration (Sprint 3).
+
+        Appends the Core-required `#checksum` suffix when absent.
+        """
         results = self._rpc.import_descriptors(
             wallet,
-            [{"desc": descriptor, "timestamp": timestamp, "range": [0, 1000], "active": False}],
+            [
+                {
+                    "desc": with_checksum(descriptor),
+                    "timestamp": timestamp,
+                    "range": [0, 1000],
+                    "active": False,
+                }
+            ],
         )
         failures = [r for r in results if not r.get("success")]
         if failures:
@@ -64,7 +75,7 @@ class BitcoinCoreOnchainImporter:
             txid = str(entry["txid"])
             if txid in seen:
                 continue
-            raw = self._rpc.get_raw_transaction(txid)
+            raw = self._rpc.get_raw_transaction(txid, True, entry.get("blockhash"))
             self_transfer = self._store_tx(raw, known_addresses)
             summary["new_txs"] += 1
             summary["self_transfers"] += int(self_transfer)

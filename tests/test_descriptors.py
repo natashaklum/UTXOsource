@@ -67,6 +67,22 @@ def test_regtest_addresses_use_bcrt_hrp() -> None:
     assert addrs[0].startswith("bcrt1")
 
 
+def test_descriptor_checksum_accepted_by_core() -> None:
+    # Checksum value verified against a real regtest node
+    # (importdescriptors success); key derived from the BIP84 vector zpub.
+    from embit import bip32
+
+    from utxoproof.descriptors import descriptor_checksum, with_checksum
+
+    tpub = bip32.HDKey.from_base58(BIP84_ZPUB).to_base58(version=b"\x04\x35\x87\xcf")
+    desc = f"wpkh([00000000/84h/1h/0h]{tpub}/0/*)"
+    assert descriptor_checksum(desc) == "hcelrxxg"
+    assert with_checksum(desc).endswith("#hcelrxxg")
+    assert with_checksum(desc + "#hcelrxxg") == desc + "#hcelrxxg"
+    with pytest.raises(ValueError):
+        descriptor_checksum("wpkh(\x01invalid)")
+
+
 def test_rejects_garbage() -> None:
     with pytest.raises(ValueError):
         validate_account_xpub("not-an-xpub")

@@ -37,17 +37,26 @@ class BitcoinRPC:
         )
 
     def call(self, method: str, *params: Any) -> Any:
-        """Single JSON-RPC call. Raises BitcoinRPCError on transport/RPC error."""
+        """Single JSON-RPC call. Raises BitcoinRPCError on transport/RPC error.
+
+        Note: bitcoind answers HTTP 500 for RPC-level errors, so the JSON
+        body is inspected before the HTTP status.
+        """
         try:
             response = self._client.post(
                 self._url, json={"jsonrpc": "1.0", "method": method, "params": list(params)}
             )
-            response.raise_for_status()
-            payload = response.json()
-        except (httpx.HTTPError, ValueError) as exc:
+        except httpx.HTTPError as exc:
             raise BitcoinRPCError(f"RPC {method} failed: {exc}") from exc
+        try:
+            payload = response.json()
+        except ValueError:
+            raise BitcoinRPCError(
+                f"RPC {method} HTTP {response.status_code}: {response.text[:200]}"
+            ) from None
         if payload.get("error"):
-            raise BitcoinRPCError(f"RPC {method} error: {payload['error']}")
+            err = payload["error"]
+            raise BitcoinRPCError(f"RPC {method} error {err.get('code')}: {err.get('message')}")
         return payload.get("result")
 
     # -- convenience wrappers used by the importer -----------------------
@@ -67,8 +76,15 @@ class BitcoinRPC:
     def list_transactions(self, wallet: str, count: int = 1000) -> list[dict[str, Any]]:
         return list(self.wallet(wallet).call("listtransactions", "*", count))
 
-    def get_raw_transaction(self, txid: str, verbose: bool = True) -> dict[str, Any]:
-        return dict(self.call("getrawtransaction", txid, verbose))
+    def get_raw_transaction(
+        self, txid: str, verbose: bool = True, blockhash: str | None = None
+    ) -> dict[str, Any]:
+        """Fetch a tx. Without -txindex, confirmed txs need their blockhash
+        (present on `listtransactions` entries); mempool txs need none."""
+        params: list[Any] = [txid, verbose]
+        if blockhash:
+            params.append(blockhash)
+        return dict(self.call("getrawtransaction", *params))
 
     def generate_to_address(self, blocks: int, address: str) -> list[str]:
         return list(self.call("generatetoaddress", blocks, address))

@@ -58,21 +58,13 @@ def test_regtest_descriptor_sync() -> None:
     _ensure_wallet(rpc, watch, watch_only=True)
     _ensure_wallet(rpc, miner_wallet, watch_only=False)
 
-    # Import first (timestamp "now" on a fresh chain), then transact: mirrors
-    # real `setup` -> fund -> `sync` ordering with no rescan gap.
+    # Import first (timestamp 0 rescans the tiny regtest chain; mirrors real
+    # `setup` -> fund -> `sync` ordering with no rescan gap).
     recv = derive_addresses(REGTEST_XPUB, 0, 0, 1, network="regtest")[0]
     assert recv.startswith("bcrt1")
-    rpc.import_descriptors(
-        watch,
-        [
-            {
-                "desc": f"wpkh([00000000/84h/1h/0h]{REGTEST_XPUB}/0/*)",
-                "timestamp": "now",
-                "range": [0, 1000],
-                "active": False,
-            }
-        ],
-    )
+    db = open_memory_db()
+    importer = BitcoinCoreOnchainImporter(rpc, db)
+    importer.import_descriptor(watch, f"wpkh([00000000/84h/1h/0h]{REGTEST_XPUB}/0/*)", 0)
 
     miner = rpc.get_new_address(miner_wallet)
     rpc.generate_to_address(101, miner)
@@ -80,8 +72,7 @@ def test_regtest_descriptor_sync() -> None:
     assert isinstance(txid, str) and len(txid) == 64
     rpc.generate_to_address(1, miner)
 
-    db = open_memory_db()
-    summary = BitcoinCoreOnchainImporter(rpc, db).sync(watch)
+    summary = importer.sync(watch)
     assert summary["new_txs"] >= 1
     rows = db.execute("SELECT value_sat FROM tx_outputs WHERE address=?", (recv,)).fetchall()
     assert rows and rows[0][0] == 125_000_000

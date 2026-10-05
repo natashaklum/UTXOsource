@@ -36,6 +36,24 @@ def test_rpc_error_raises() -> None:
         _client(handler).call("getblockcount")
 
 
+def test_http_500_with_json_error_surfaces_rpc_message() -> None:
+    # bitcoind answers HTTP 500 for RPC-level errors (e.g. wallet exists);
+    # the code/message must survive, not the HTTP status text.
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            500,
+            json={
+                "result": None,
+                "error": {"code": -4, "message": "Wallet foo already exists"},
+                "id": 1,
+            },
+        )
+
+    with pytest.raises(BitcoinRPCError, match="already exists"):
+        _client(handler).call("createwallet")
+
+
 def test_wallet_endpoint() -> None:
     seen: list[str] = []
 

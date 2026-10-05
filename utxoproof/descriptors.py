@@ -88,3 +88,54 @@ def derive_addresses(
         script.p2wpkh(account.derive([chain, index]).get_public_key()).address(net)
         for index in range(start, start + count)
     ]
+
+
+_INPUT_CHARSET = (
+    "0123456789()[],'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~"
+    'ijklmnopqrstuvwxyzABCDEFGH`#"\\ '
+)
+_CHECKSUM_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+_POLYMOD_GEN = (0xF5DEE51989, 0xA9FDCA3312, 0x1BAB10E32D, 0x3706B1677A, 0x644D626FFD)
+
+
+def _polymod(c: int, val: int) -> int:
+    c0 = c >> 35
+    c = ((c & 0x7FFFFFFFF) << 5) ^ val
+    for i, generator in enumerate(_POLYMOD_GEN):
+        if (c0 >> i) & 1:
+            c ^= generator
+    return c
+
+
+def descriptor_checksum(desc: str) -> str:
+    """Core-compatible 8-char descriptor checksum (cf. `DescriptorChecksum`).
+
+    Bitcoin Core rejects `importdescriptors` entries without a `#checksum`
+    suffix; this computes it in pure python.
+    """
+    core = desc.split("#")[0]
+    c = 1
+    cls = 0
+    clscount = 0
+    for char in core:
+        pos = _INPUT_CHARSET.find(char)
+        if pos == -1:
+            raise ValueError(f"Character {char!r} not in descriptor charset")
+        c = _polymod(c, pos & 31)
+        cls = cls * 3 + (pos >> 5)
+        clscount += 1
+        if clscount == 3:
+            c = _polymod(c, cls)
+            cls = 0
+            clscount = 0
+    if clscount > 0:
+        c = _polymod(c, cls)
+    for _ in range(8):
+        c = _polymod(c, 0)
+    c ^= 1
+    return "".join(_CHECKSUM_CHARSET[(c >> (5 * (7 - j))) & 31] for j in range(8))
+
+
+def with_checksum(desc: str) -> str:
+    """Append `#checksum` unless already present."""
+    return desc if "#" in desc else f"{desc}#{descriptor_checksum(desc)}"
