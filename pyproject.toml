@@ -8,10 +8,11 @@ version = "0.1.0"
 description = "Bitcoin wealth management and compliance tool for Belgian self-custodians"
 requires-python = ">=3.11"
 dependencies = [
-    # Sprint 0: rp2 only. Exchange plugins (DaLI) arrive in Sprint 1/8 and
-    # need a C toolchain (backports-datetime-fromisoformat); re-add
-    # "dali-rp2" then. Same for python-bitcoinrpc (Sprint 3).
-    "rp2 @ git+https://github.com/natashaklum/rp2.git@main",
+    # Sprint 0: rp2 only. Pinned to the exact commit checked in as the
+    # vendor/rp2 submodule (reproducible installs without submodule init).
+    # After changing vendor/rp2: commit+push there, then `git add vendor/rp2`
+    # here and bump this SHA to match.
+    "rp2 @ git+https://github.com/natashaklum/rp2.git@b1995bf1a07665035a46cf331cb06ccccd347ce2",
     "httpx>=0.27",
     "jinja2>=3.1",
 ]
@@ -36,6 +37,7 @@ allow-direct-references = true
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+exclude = ["vendor"]
 
 [tool.ruff.lint]
 select = [

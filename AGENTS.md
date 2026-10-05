@@ -13,13 +13,15 @@ Full spec: `utxo-source-plan_v5.md`. Two repos:
 
 - This repo (`UTXOsource`): the tool. Python 3.11+, `utxoproof/` package.
 - [`natashaklum/rp2`](https://github.com/natashaklum/rp2) fork: rp2 + Belgian `BE`
-  country plugin. This repo depends on it
-  (`rp2 @ git+https://github.com/natashaklum/rp2.git@main` in `pyproject.toml`).
+  country plugin. This repo depends on it (pinned SHA in `pyproject.toml`, kept in
+  lockstep with the `vendor/rp2` submodule pointer).
   rp2-side changes (country plugin, templates) go there, not here.
-- Local checkouts live side by side: `~/projects/UTXOsource` and `~/projects/rp2`
-  (persistent; never use `/tmp` for repo clones, it is wiped on restart).
-  Each has its own `.venv` (uv). rp2 checks: `cd ~/projects/rp2 &&
-  .venv/bin/python -m pytest tests/test_plugin_country_be.py`.
+- Local checkouts: this repo embeds the fork as the `vendor/rp2` git submodule
+  (never clone rp2 separately; `/tmp` is wiped on restart anyway).
+  Iterating on both: `VIRTUAL_ENV=.venv uv pip install -e vendor/rp2`, run rp2
+  checks from the submodule (`cd vendor/rp2 && ../.venv/bin/python -m pytest
+  tests/test_plugin_country_be.py`), then commit+push in `vendor/rp2` first,
+  `git add vendor/rp2` here, and bump the pinned SHA in `pyproject.toml`.
 
 ## Commands
 
