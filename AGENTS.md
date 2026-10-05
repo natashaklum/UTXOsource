@@ -16,6 +16,10 @@ Full spec: `utxo-source-plan_v5.md`. Two repos:
   country plugin. This repo depends on it
   (`rp2 @ git+https://github.com/natashaklum/rp2.git@main` in `pyproject.toml`).
   rp2-side changes (country plugin, templates) go there, not here.
+- Local checkouts live side by side: `~/projects/UTXOsource` and `~/projects/rp2`
+  (persistent; never use `/tmp` for repo clones, it is wiped on restart).
+  Each has its own `.venv` (uv). rp2 checks: `cd ~/projects/rp2 &&
+  .venv/bin/python -m pytest tests/test_plugin_country_be.py`.
 
 ## Commands
 
