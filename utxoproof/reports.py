@@ -148,3 +148,45 @@ def write_report(
         encoding="utf-8",
     )
     return target
+
+
+# BIP84 spec-vector account (m/84'/0'/0', worthless test key).
+DESCRIPTORS_DEMO_XPUB = (
+    "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCTo"
+    "UG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs"
+)
+DESCRIPTORS_DEMO_FINGERPRINT = "73c5da0a"
+
+
+def write_descriptors_page(out_dir: str | Path) -> Path:
+    """Render the descriptor/address check page into ``out_dir``."""
+    from utxoproof.descriptors import build_descriptors, derive_addresses
+
+    descriptors = build_descriptors(DESCRIPTORS_DEMO_XPUB, DESCRIPTORS_DEMO_FINGERPRINT, 84, 0, 0)
+    rows = [
+        {"path": f"m/84'/0'/0'/0/{i}", "address": addr}
+        for i, addr in enumerate(derive_addresses(DESCRIPTORS_DEMO_XPUB, 0, 0, 3))
+    ]
+    rows.append(
+        {
+            "path": "m/84'/0'/0'/1/0",
+            "address": derive_addresses(DESCRIPTORS_DEMO_XPUB, 1, 0, 1)[0],
+        }
+    )
+    template = jinja2.Environment(autoescape=True).from_string(
+        (Path(__file__).parent / "templates" / "descriptors.html.j2").read_text(encoding="utf-8")
+    )
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    target = out / "descriptors.html"
+    target.write_text(
+        template.render(
+            xpub=DESCRIPTORS_DEMO_XPUB,
+            fingerprint=DESCRIPTORS_DEMO_FINGERPRINT,
+            external=descriptors["external"],
+            change=descriptors["change"],
+            addresses=rows,
+        ),
+        encoding="utf-8",
+    )
+    return target

@@ -35,6 +35,16 @@ VIRTUAL_ENV=.venv uv pip install -e ".[dev]"
 .venv/bin/python scripts/build_demo.py --out site  # all demo reports + index
 ```
 
+On-chain (needs a node; regtest via `docker-compose.regtest.yml`):
+
+```bash
+.venv/bin/utxoproof setup --rpc-url http://127.0.0.1:18443 --rpc-user utxoproof \
+  --rpc-password utxoproof-test --wallet utxoproof_watchonly \
+  --xpub <account-xpub> --fingerprint <master-fp>
+.venv/bin/utxoproof sync --rpc-url http://127.0.0.1:18443 --rpc-user utxoproof \
+  --rpc-password utxoproof-test --wallet utxoproof_watchonly
+```
+
 Checks:
 
 ```bash

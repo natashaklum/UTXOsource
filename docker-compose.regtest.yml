@@ -1,0 +1,33 @@
+# Regtest stack for local development (Sprint 3 skeleton).
+# bitcoind only; drive it with `utxoproof setup/sync --rpc-url
+# http://127.0.0.1:18443 ...` or the regtest pytest marker.
+# CI starts an equivalent container inline (see .github/workflows/ci.yml).
+services:
+  bitcoind:
+    image: lncm/bitcoind:v25.1
+    command:
+      - -regtest=1
+      - -server=1
+      - -rpcuser=utxoproof
+      - -rpcpassword=utxoproof-test
+      - -rpcallowip=0.0.0.0/0
+      - -rpcbind=0.0.0.0
+      - -fallbackfee=0.0002
+    ports:
+      - "127.0.0.1:18443:18443"
+    volumes:
+      - bitcoind_regtest_data:/data/.bitcoin
+
+  # Full-stack local use (mirrors plan Sec. 19; uncomment to run reports here):
+  # utxoproof:
+  #   build: .
+  #   depends_on:
+  #     - bitcoind
+  #   volumes:
+  #     - ./utxoproof.toml:/app/utxoproof.toml:ro
+  #   environment:
+  #     - UTXOPROOF_RPC_URL=http://bitcoind:18443
+  #   command: ["sync"]
+
+volumes:
+  bitcoind_regtest_data:

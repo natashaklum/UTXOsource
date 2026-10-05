@@ -36,12 +36,19 @@ VIRTUAL_ENV=.venv uv pip install -e ".[dev]"
 ```
 
 No system pip, no `cc` on dev machines: keep runtime deps pure-Python.
-DaLI / `python-bitcoinrpc` are intentionally absent until their sprints (need a
-C toolchain) — see the comment in `pyproject.toml`.
+DaLI is intentionally absent until its sprints (needs a C toolchain).
+`embit` is allowed (pure-python wheel, no compiler needed).
 
 ## Conventions
 
 - Money: `Decimal` only, never float. Tax math lives in `utxoproof/belgian_tax.py`.
+- Chain crypto (xpub parsing, address derivation) goes through `utxoproof/descriptors.py`
+  (embit); new vectors must be spec vectors, hand-verified before pinning.
+- Bitcoin Core access goes through `utxoproof/bitcoin_rpc.py` (httpx JSON-RPC) and
+  `utxoproof/onchain.py` (tx-graph sync). Daemon-backed tests are marked
+  `regtest` and skip without a node; CI `regtest` job starts one via docker.
+- Regtest stack: `docker-compose.regtest.yml` (bitcoind only; no docker on dev
+  boxes, so daemon runs are CI-only).
 - SQLite schema (`utxoproof/schema.sql`) is created whole (Sec. 8); schema changes
   need a migration note + `tests/test_schema.py` update.
 - `tests/fixtures/*.csv` are hand-verified: recompute expected values

@@ -43,3 +43,14 @@ def test_kraken_report_end_to_end(tmp_path: Path) -> None:
     assert report.gain_eur == Decimal("2905")
     html = render_report(report)
     assert "2905.00" in html and "958.65" in html
+
+
+def test_descriptors_page_shows_vector_addresses(tmp_path: Path) -> None:
+    from utxoproof.reports import write_descriptors_page
+
+    target = write_descriptors_page(tmp_path)
+    html = target.read_text(encoding="utf-8")
+    assert "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu" in html
+    assert "bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g" in html
+    assert "bc1q8c6fshw2dlwun7ekn9qwf37cu2rn755upcp6el" in html
+    assert "73c5da0a" in html

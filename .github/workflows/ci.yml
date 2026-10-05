@@ -25,3 +25,32 @@ jobs:
 
       - name: Test
         run: pytest
+
+  regtest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Start regtest bitcoind
+        run: |
+          docker run -d --name bitcoind -p 18443:18443 lncm/bitcoind:v25.1 \
+            -regtest=1 -server=1 -rpcuser=utxoproof -rpcpassword=utxoproof-test \
+            -rpcallowip=0.0.0.0/0 -rpcbind=0.0.0.0 -fallbackfee=0.0002
+          for i in $(seq 1 30); do
+            curl -sf -u utxoproof:utxoproof-test \
+              --data '{"jsonrpc":"1.0","method":"getblockcount","params":[]}' \
+              http://127.0.0.1:18443/ && break
+            sleep 2
+          done
+
+      - name: Regtest end-to-end
+        run: pytest -m regtest -p no:cacheprovider --no-cov

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import sqlite3
 import sys
 from decimal import Decimal
 from pathlib import Path
@@ -133,7 +134,61 @@ def build_parser() -> argparse.ArgumentParser:
         type=Decimal,
         help="Communal surcharge rate (default 0.07)",
     )
+    setup = sub.add_parser("setup", help="Create watch-only wallet, import xpubs")
+    setup.add_argument("--rpc-url", default="http://127.0.0.1:8332")
+    setup.add_argument("--rpc-user", default="")
+    setup.add_argument("--rpc-password", default="")
+    setup.add_argument("--wallet", default="utxoproof_watchonly")
+    setup.add_argument("--xpub", required=True, help="Account xpub (xpub/ypub/zpub)")
+    setup.add_argument("--fingerprint", required=True, help="Master fingerprint (8 hex)")
+    setup.add_argument("--purpose", type=int, default=84)
+    setup.add_argument("--coin", type=int, default=0)
+    setup.add_argument("--account", type=int, default=0)
+    sync = sub.add_parser("sync", help="Pull new on-chain transactions into SQLite")
+    sync.add_argument("--rpc-url", default="http://127.0.0.1:8332")
+    sync.add_argument("--rpc-user", default="")
+    sync.add_argument("--rpc-password", default="")
+    sync.add_argument("--wallet", default="utxoproof_watchonly")
+    sync.add_argument("--db", default="~/.utxoproof/utxoproof.db")
     return parser
+
+
+def _open_db(path: str) -> sqlite3.Connection:
+    from utxoproof.db import init_db
+
+    db_path = Path(path).expanduser()
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    db = sqlite3.connect(str(db_path))
+    init_db(db)
+    return db
+
+
+def _run_setup(args: argparse.Namespace) -> int:
+    from utxoproof.bitcoin_rpc import BitcoinRPC
+    from utxoproof.descriptors import build_descriptors
+    from utxoproof.onchain import BitcoinCoreOnchainImporter
+
+    rpc = BitcoinRPC(args.rpc_url, args.rpc_user, args.rpc_password)
+    importer = BitcoinCoreOnchainImporter(rpc, _open_db(":memory:"))
+    importer.setup_wallet(args.wallet)
+    descriptors = build_descriptors(
+        args.xpub, args.fingerprint, args.purpose, args.coin, args.account
+    )
+    for kind, desc in descriptors.items():
+        importer.import_descriptor(args.wallet, desc, "now")
+        print(f"imported {kind}: {desc}")
+    return 0
+
+
+def _run_sync(args: argparse.Namespace) -> int:
+    from utxoproof.bitcoin_rpc import BitcoinRPC
+    from utxoproof.onchain import BitcoinCoreOnchainImporter
+
+    rpc = BitcoinRPC(args.rpc_url, args.rpc_user, args.rpc_password)
+    importer = BitcoinCoreOnchainImporter(rpc, _open_db(args.db))
+    summary = importer.sync(args.wallet)
+    print(f"sync: {summary['new_txs']} new / {summary['txs_seen']} seen")
+    return 0
 
 
 def _run_import(args: argparse.Namespace) -> int:
@@ -185,6 +240,10 @@ def main(argv: list[str] | None = None) -> int:
         target = write_report(args.input, args.year, args.out, args.communal_rate)
         print(f"wrote {target}")
         return 0
+    if args.command == "setup":
+        return _run_setup(args)
+    if args.command == "sync":
+        return _run_sync(args)
     return 1
 
 

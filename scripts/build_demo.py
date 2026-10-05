@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from utxoproof.kraken_csv import parse_kraken_ledgers, to_manual_csv_rows
-from utxoproof.reports import write_report
+from utxoproof.reports import write_descriptors_page, write_report
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -81,6 +81,11 @@ def main() -> int:
         target = write_report(str(csv_path), year, out / slug)
         rel = target.relative_to(out)
         links.append(f'<li><a href="{rel}">{demo.title}</a></li>')
+
+    write_descriptors_page(out / "descriptors")
+    links.append(
+        '<li><a href="descriptors/descriptors.html">Descriptor check (BIP84 vectors)</a></li>'
+    )
 
     (out / "index.html").write_text(INDEX_TEMPLATE.format(links="\n".join(links)), encoding="utf-8")
     print(f"demo site: {out} ({len(links)} reports)")
