@@ -109,6 +109,40 @@ def main() -> int:
     write_privacy_page(create_sample_graph(), out / "privacy")
     links.append('<li><a href="privacy/privacy.html">Privacy report (sample graph)</a></li>')
 
+    # Advisory over the sample graph + one seasoned estate UTXO.
+    import datetime
+    from decimal import Decimal as _Decimal
+
+    from utxoproof.advisory import analyze_wallet
+    from utxoproof.kyc import propagate_graph, seed_source_kyc
+    from utxoproof.reports import write_advisory_page
+
+    demo_db = create_sample_graph()
+    demo_db.execute("INSERT INTO transactions (txid, block_time) VALUES ('E', '2021-06-01')")
+    demo_db.execute(
+        "INSERT INTO tx_outputs (txid, vout, value_sat, source_type) "
+        "VALUES ('E', 0, 200000000, 'exchange_purchase')"
+    )
+    demo_db.commit()
+    seed_source_kyc(demo_db)
+    propagate_graph(demo_db)
+    curve = {
+        datetime.date(2021, 6, 1): _Decimal("5000"),
+        datetime.date(2023, 1, 1): _Decimal("20000"),
+        datetime.date(2023, 2, 1): _Decimal("25000"),
+        datetime.date(2023, 3, 1): _Decimal("30000"),
+    }
+    as_of = datetime.date(2024, 6, 1)
+    advisories = analyze_wallet(demo_db, lambda day: curve[day], _Decimal("40000"), as_of)
+    write_advisory_page(
+        advisories,
+        _Decimal("40000"),
+        "illustrative demo curve",
+        as_of.isoformat(),
+        out / "advisory",
+    )
+    links.append('<li><a href="advisory/advisory.html">Advisory (sample graph)</a></li>')
+
     (out / "index.html").write_text(INDEX_TEMPLATE.format(links="\n".join(links)), encoding="utf-8")
     print(f"demo site: {out} ({len(links)} reports)")
     return 0

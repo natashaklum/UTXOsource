@@ -50,6 +50,10 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   `regtest` and skip without a node; CI `regtest` job starts one via docker.
 - KYC lives in `utxoproof/kyc.py` (proportional propagation, mixing detection);
   `utxoproof privacy` renders it. Shared sample graph: `create_sample_graph()`.
+- Advisory lives in `utxoproof/advisory.py` (Sec. 13 flag rules, estate score);
+  cost basis is acquisition-date close (rp2 lot integration pending).
+  `utxoproof advise --db --price --as-of [--out]`; speculation taint defaults
+  off until the Sprint 7 classifier feeds it.
 - Regtest stack: `docker-compose.regtest.yml` (bitcoind only; no docker on dev
   boxes, so daemon runs are CI-only).
 - SQLite schema (`utxoproof/schema.sql`) is created whole (Sec. 8); schema changes

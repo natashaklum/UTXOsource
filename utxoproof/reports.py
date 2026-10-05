@@ -16,6 +16,7 @@ from pathlib import Path
 import jinja2
 
 from utxoproof import __version__
+from utxoproof.advisory import UTXOAdvisory, portfolio_summary
 from utxoproof.belgian_tax import COMMUNAL_SURCHARGE_DEFAULT, apply_belgian_tax
 from utxoproof.cli import compute_details
 
@@ -258,6 +259,50 @@ def write_privacy_page(db: sqlite3.Connection, out_dir: str | Path) -> Path:
                 }
                 for e in events
             ],
+            disclaimer=DISCLAIMER,
+        ),
+        encoding="utf-8",
+    )
+    return target
+
+
+def write_advisory_page(
+    advisories: list[UTXOAdvisory],
+    current_price_eur: Decimal,
+    price_note: str,
+    as_of: str,
+    out_dir: str | Path,
+) -> Path:
+    """Render the per-UTXO advisory table into ``out_dir``."""
+    summary = portfolio_summary(advisories)
+    template = jinja2.Environment(autoescape=True).from_string(
+        (Path(__file__).parent / "templates" / "advisory.html.j2").read_text(encoding="utf-8")
+    )
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    target = out / "advisory.html"
+    target.write_text(
+        template.render(
+            as_of=as_of,
+            current_price_eur=f"{current_price_eur:.2f}",
+            price_note=price_note,
+            advisories=[
+                {
+                    "utxo": f"{a.txid}:{a.vout}",
+                    "btc": f"{a.amount_btc:.8f}",
+                    "holding_days": a.holding_days,
+                    "cost_eur": f"{a.acquisition_cost_eur:.2f}",
+                    "value_eur": f"{a.current_value_eur:.2f}",
+                    "gain_eur": f"{a.unrealized_gain_eur:.2f}",
+                    "tax_eur": f"{a.tax_if_sold_eur:.2f}",
+                    "kyc": a.kyc_status,
+                    "flags": ",".join(sorted(f.value for f in a.flags)),
+                }
+                for a in advisories
+            ],
+            total_tax_eur=f"{summary['total_tax_eur']:.2f}",
+            estate_value_eur=f"{summary['estate_value_eur']:.2f}",
+            borrow_value_eur=f"{summary['borrow_value_eur']:.2f}",
             disclaimer=DISCLAIMER,
         ),
         encoding="utf-8",

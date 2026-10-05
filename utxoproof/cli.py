@@ -4,14 +4,18 @@ Sprint 0: ``compute --input manual.csv --year Y`` (throwaway verification path,
 grows into ``report --year`` in Sprint 2).
 Sprint 1: ``import --file kraken.csv --type kraken`` converts an exchange export
 to manual-CSV rows for ``compute``.
+Sprint 2+: ``report``, ``status``, ``setup``/``sync`` (on-chain skeleton),
+``privacy`` (KYC), ``advise`` (per-UTXO advisory).
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
+import datetime
 import sqlite3
 import sys
+from collections.abc import Callable
 from decimal import Decimal
 from pathlib import Path
 from typing import TypedDict
@@ -193,6 +197,14 @@ def build_parser() -> argparse.ArgumentParser:
     privacy = sub.add_parser("privacy", help="KYC analysis and mixing events")
     privacy.add_argument("--db", default="~/.utxoproof/utxoproof.db")
     privacy.add_argument("--out", default=None, help="Output directory for privacy.html")
+    advise = sub.add_parser("advise", help="Per-UTXO advisory table")
+    advise.add_argument("--db", default="~/.utxoproof/utxoproof.db")
+    advise.add_argument("--price", type=Decimal, default=None, help="BTC/EUR price override")
+    advise.add_argument("--as-of", default=None, help="As-of date YYYY-MM-DD (default: today)")
+    advise.add_argument("--out", default=None, help="Output directory for advisory.html")
+    advise.add_argument(
+        "--min-value", type=Decimal, default=Decimal("0"), help="Min EUR value to show"
+    )
     return parser
 
 
@@ -260,6 +272,49 @@ def _run_status(args: argparse.Namespace) -> int:
     print(f"unrealized_eur: {status['unrealized_eur']:.2f}")
     if args.out:
         target = write_status_page(args.input, price, note, args.out)
+        print(f"wrote {target}")
+    return 0
+
+
+def _run_advise(args: argparse.Namespace) -> int:
+    from utxoproof.advisory import analyze_wallet, portfolio_summary
+    from utxoproof.kyc import propagate_graph, seed_source_kyc
+    from utxoproof.reports import write_advisory_page
+
+    db = _open_db(args.db)
+    seed_source_kyc(db)
+    propagate_graph(db)
+    as_of = (
+        datetime.date.fromisoformat(args.as_of)
+        if args.as_of
+        else datetime.datetime.now(datetime.UTC).date()
+    )
+    price: Decimal
+    curve: Callable[[datetime.date], Decimal]
+    if args.price is not None:
+        price = Decimal(args.price)
+        note = "explicit --price"
+
+        def curve(_day: datetime.date) -> Decimal:
+            return price
+
+    else:
+        from utxoproof.price_oracle import EURPriceOracle
+
+        oracle = EURPriceOracle(db)
+        curve = oracle.get_btc_eur
+        note = "daily close per acquisition date"
+        price = oracle.get_btc_eur(as_of)
+    advisories = [
+        a for a in analyze_wallet(db, curve, price, as_of) if a.current_value_eur >= args.min_value
+    ]
+    for a in advisories:
+        flags = ",".join(sorted(f.value for f in a.flags))
+        print(f"{a.txid}:{a.vout} {a.amount_btc:.8f}BTC tax={a.tax_if_sold_eur:.2f} [{flags}]")
+    summary = portfolio_summary(advisories)
+    print(f"liquidate_tax_eur: {summary['total_tax_eur']:.2f}")
+    if args.out:
+        target = write_advisory_page(advisories, price, note, as_of.isoformat(), args.out)
         print(f"wrote {target}")
     return 0
 
@@ -338,6 +393,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_status(args)
     if args.command == "privacy":
         return _run_privacy(args)
+    if args.command == "advise":
+        return _run_advise(args)
     return 1
 
 
