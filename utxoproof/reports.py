@@ -190,3 +190,36 @@ def write_descriptors_page(out_dir: str | Path) -> Path:
         encoding="utf-8",
     )
     return target
+
+
+def write_status_page(
+    csv_path: str | Path,
+    price_eur: Decimal,
+    price_note: str,
+    out_dir: str | Path,
+) -> Path:
+    """Render the holdings status page into ``out_dir``."""
+    from utxoproof.cli import compute_status
+
+    status = compute_status(csv_path, price_eur)
+    template = jinja2.Environment(autoescape=True).from_string(
+        (Path(__file__).parent / "templates" / "status.html.j2").read_text(encoding="utf-8")
+    )
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    target = out / "status.html"
+    target.write_text(
+        template.render(
+            as_of=datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M UTC"),
+            price_eur=f"{price_eur:.2f}",
+            price_note=price_note,
+            btc=f"{status['btc']:.8f}",
+            cost_eur=f"{status['cost_eur']:.2f}",
+            avg_cost_eur=f"{status['avg_cost_eur']:.2f}",
+            value_eur=f"{status['value_eur']:.2f}",
+            unrealized_eur=f"{status['unrealized_eur']:.2f}",
+            disclaimer=DISCLAIMER,
+        ),
+        encoding="utf-8",
+    )
+    return target

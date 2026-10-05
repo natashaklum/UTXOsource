@@ -29,6 +29,7 @@ Full spec: `utxo-source-plan_v5.md`. Two repos:
 uv venv                                            # one-time
 VIRTUAL_ENV=.venv uv pip install -e ".[dev]"
 .venv/bin/utxoproof compute --input tests/fixtures/manual_2023.csv --year 2023
+.venv/bin/utxoproof status --input tests/fixtures/manual_2023.csv --price 40000
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
 .venv/bin/mypy utxoproof/ scripts/               # strict, must be clean
 .venv/bin/python -m pytest                         # must pass

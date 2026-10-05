@@ -31,6 +31,7 @@ Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 uv venv
 VIRTUAL_ENV=.venv uv pip install -e ".[dev]"
 .venv/bin/utxoproof compute --input tests/fixtures/manual_2023.csv --year 2023
+.venv/bin/utxoproof status --input tests/fixtures/manual_2023.csv --price 40000
 .venv/bin/utxoproof report --input tests/fixtures/manual_2023.csv --year 2023 --out /tmp/utxo-report
 .venv/bin/python scripts/build_demo.py --out site  # all demo reports + index
 ```

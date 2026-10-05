@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>utxoproof holdings status</title>
+<style>
+  body { font-family: sans-serif; max-width: 900px; margin: 2em auto; padding: 0 1em; color: #222; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #999; padding: 0.4em 0.6em; text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  th { background: #eee; }
+  .disclaimer { font-size: 0.85em; color: #555; border-top: 1px solid #999; margin-top: 2em; padding-top: 1em; }
+  @media print {
+    body { margin: 0; }
+    tr { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<h1>utxoproof holdings status</h1>
+<p>As of {{ as_of }} at {{ price_eur }} EUR/BTC ({{ price_note }}).
+Cost basis method: moving_average.</p>
+
+<table>
+  <tr><th>Item</th><th>Value</th></tr>
+  <tr><td>Holdings (BTC)</td><td>{{ btc }}</td></tr>
+  <tr><td>Cost basis (EUR)</td><td>{{ cost_eur }}</td></tr>
+  <tr><td>Average cost (EUR/BTC)</td><td>{{ avg_cost_eur }}</td></tr>
+  <tr><td>Current value (EUR)</td><td>{{ value_eur }}</td></tr>
+  <tr><td>Unrealized gain/loss (EUR)</td><td>{{ unrealized_eur }}</td></tr>
+</table>
+
+<p class="disclaimer">{{ disclaimer }}</p>
+</body>
+</html>

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from utxoproof.kraken_csv import parse_kraken_ledgers, to_manual_csv_rows
-from utxoproof.reports import write_descriptors_page, write_report
+from utxoproof.reports import write_descriptors_page, write_report, write_status_page
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -86,6 +86,18 @@ def main() -> int:
     links.append(
         '<li><a href="descriptors/descriptors.html">Descriptor check (BIP84 vectors)</a></li>'
     )
+
+    # Holdings status at a fixed, labeled demo price (deterministic output).
+    from decimal import Decimal
+
+    demo_price = Decimal("40000")
+    price_note = "fixed demo price 40000 EUR/BTC"
+    for slug, csv_path in (
+        ("manual-2023", ROOT / "tests" / "fixtures" / "manual_2023.csv"),
+        ("kraken-2023", out / "kraken-2023.csv"),
+    ):
+        write_status_page(csv_path, demo_price, price_note, out / slug)
+        links.append(f'<li><a href="{slug}/status.html">Holdings status — {slug}</a></li>')
 
     (out / "index.html").write_text(INDEX_TEMPLATE.format(links="\n".join(links)), encoding="utf-8")
     print(f"demo site: {out} ({len(links)} reports)")

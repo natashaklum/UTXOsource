@@ -92,6 +92,41 @@ def compute_year(csv_path: str | Path, year: int) -> dict[str, Decimal]:
     return {"gain_loss_eur": compute_details(csv_path, year)["gain_loss_eur"]}
 
 
+def compute_status(csv_path: str | Path, price_eur: Decimal) -> dict[str, Decimal]:
+    """Current holdings snapshot at ``price_eur`` (whole-file inventory).
+
+    Returns ``btc, cost_eur, avg_cost_eur, value_eur, unrealized_eur``.
+    Same moving-average pool as ``compute_details`` (fees included).
+    """
+    total_btc = Decimal("0")
+    total_cost = Decimal("0")
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            side = str(row["side"]).strip().upper()
+            btc = Decimal(str(row["btc"]))
+            unit = Decimal(str(row["eur_per_btc"]))
+            fee = Decimal(str(row.get("fee_eur") or "0"))
+            if side == "BUY":
+                total_btc += btc
+                total_cost += btc * unit + fee
+            elif side == "SELL":
+                if total_btc <= Decimal("0"):
+                    raise ValueError(f"SELL with empty inventory: {row}")
+                basis = total_cost / total_btc * btc if total_btc else Decimal("0")
+                total_btc -= btc
+                total_cost -= basis
+            else:
+                raise ValueError(f"Unknown side {row['side']!r}")
+    value = total_btc * price_eur
+    return {
+        "btc": total_btc,
+        "cost_eur": total_cost,
+        "avg_cost_eur": total_cost / total_btc if total_btc else Decimal("0"),
+        "value_eur": value,
+        "unrealized_eur": value - total_cost,
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="utxoproof", description="utxoproof Sprint 0")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -150,6 +185,11 @@ def build_parser() -> argparse.ArgumentParser:
     sync.add_argument("--rpc-password", default="")
     sync.add_argument("--wallet", default="utxoproof_watchonly")
     sync.add_argument("--db", default="~/.utxoproof/utxoproof.db")
+    status = sub.add_parser("status", help="Holdings, cost basis, unrealized P&L")
+    status.add_argument("--input", required=True, help="Manual CSV path")
+    status.add_argument("--price", type=Decimal, default=None, help="BTC/EUR price override")
+    status.add_argument("--db", default="~/.utxoproof/utxoproof.db")
+    status.add_argument("--out", default=None, help="Output directory for status.html")
     return parser
 
 
@@ -188,6 +228,36 @@ def _run_sync(args: argparse.Namespace) -> int:
     importer = BitcoinCoreOnchainImporter(rpc, _open_db(args.db))
     summary = importer.sync(args.wallet)
     print(f"sync: {summary['new_txs']} new / {summary['txs_seen']} seen")
+    return 0
+
+
+def _resolve_price(price: Decimal | None, db_path: str) -> tuple[Decimal, str]:
+    if price is not None:
+        return price, "explicit --price"
+    import datetime
+
+    from utxoproof.price_oracle import EURPriceOracle
+
+    db = _open_db(db_path)
+    day = datetime.datetime.now(datetime.UTC).date() - datetime.timedelta(days=1)
+    oracle = EURPriceOracle(db)
+    return oracle.get_btc_eur(day), f"Kraken close {day.isoformat()}"
+
+
+def _run_status(args: argparse.Namespace) -> int:
+    from utxoproof.reports import write_status_page
+
+    price, note = _resolve_price(args.price, args.db)
+    status = compute_status(args.input, price)
+    print(f"holdings_btc: {status['btc']:.8f}")
+    print(f"cost_basis_eur: {status['cost_eur']:.2f}")
+    print(f"avg_cost_eur: {status['avg_cost_eur']:.2f}")
+    print(f"price_eur: {price:.2f} ({note})")
+    print(f"value_eur: {status['value_eur']:.2f}")
+    print(f"unrealized_eur: {status['unrealized_eur']:.2f}")
+    if args.out:
+        target = write_status_page(args.input, price, note, args.out)
+        print(f"wrote {target}")
     return 0
 
 
@@ -244,6 +314,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_setup(args)
     if args.command == "sync":
         return _run_sync(args)
+    if args.command == "status":
+        return _run_status(args)
     return 1
 
 
