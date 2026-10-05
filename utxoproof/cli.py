@@ -38,6 +38,22 @@ class ComputeResult(TypedDict):
     gain_loss_eur: Decimal
 
 
+class YearlyGain(TypedDict):
+    year: int
+    gain_eur: Decimal
+    disposals: int
+
+
+class Inventory(TypedDict):
+    btc: Decimal
+    cost_eur: Decimal
+
+
+class AlltimeResult(TypedDict):
+    per_year: list[YearlyGain]
+    inventory: Inventory
+
+
 def compute_details(csv_path: str | Path, year: int) -> ComputeResult:
     """Per-disposal moving-average detail for ``year`` plus the yearly total.
 
@@ -96,12 +112,8 @@ def compute_year(csv_path: str | Path, year: int) -> dict[str, Decimal]:
     return {"gain_loss_eur": compute_details(csv_path, year)["gain_loss_eur"]}
 
 
-def compute_status(csv_path: str | Path, price_eur: Decimal) -> dict[str, Decimal]:
-    """Current holdings snapshot at ``price_eur`` (whole-file inventory).
-
-    Returns ``btc, cost_eur, avg_cost_eur, value_eur, unrealized_eur``.
-    Same moving-average pool as ``compute_details`` (fees included).
-    """
+def compute_inventory(csv_path: str | Path) -> Inventory:
+    """Whole-file moving-average inventory (BTC + cost basis, no valuation)."""
     total_btc = Decimal("0")
     total_cost = Decimal("0")
     with open(csv_path, newline="", encoding="utf-8") as f:
@@ -121,6 +133,18 @@ def compute_status(csv_path: str | Path, price_eur: Decimal) -> dict[str, Decima
                 total_cost -= basis
             else:
                 raise ValueError(f"Unknown side {row['side']!r}")
+    return {"btc": total_btc, "cost_eur": total_cost}
+
+
+def compute_status(csv_path: str | Path, price_eur: Decimal) -> dict[str, Decimal]:
+    """Current holdings snapshot at ``price_eur`` (whole-file inventory).
+
+    Returns ``btc, cost_eur, avg_cost_eur, value_eur, unrealized_eur``.
+    Same moving-average pool as ``compute_details`` (fees included).
+    """
+    inventory = compute_inventory(csv_path)
+    total_btc = inventory["btc"]
+    total_cost = inventory["cost_eur"]
     value = total_btc * price_eur
     return {
         "btc": total_btc,
@@ -129,6 +153,21 @@ def compute_status(csv_path: str | Path, price_eur: Decimal) -> dict[str, Decima
         "value_eur": value,
         "unrealized_eur": value - total_cost,
     }
+
+
+def compute_alltime(csv_path: str | Path) -> AlltimeResult:
+    """Per-year gains plus remaining inventory across the whole file."""
+    years: set[int] = set()
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            years.add(int(str(row["date"])[:4]))
+    per_year: list[YearlyGain] = []
+    for year in sorted(years):
+        details = compute_details(csv_path, year)
+        gain = details["gain_loss_eur"]
+        per_year.append({"year": year, "gain_eur": gain, "disposals": len(details["disposals"])})
+    inventory = compute_inventory(csv_path)
+    return {"per_year": per_year, "inventory": inventory}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -175,9 +214,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     report = sub.add_parser("report", help="Generate an HTML tax report")
     report.add_argument("--input", required=True, help="Manual CSV path")
-    report.add_argument("--year", required=True, type=int, help="Tax year, e.g. 2023")
-    report.add_argument("--out", required=True, help="Output directory for report.html")
+    report.add_argument("--year", type=int, default=None, help="Tax year, e.g. 2023")
+    report.add_argument("--alltime", action="store_true", help="All-time summary instead")
+    report.add_argument("--out", required=True, help="Output directory")
     report.add_argument("--config", default=None, help="utxoproof.toml path")
+    report.add_argument(
+        "--source", action="append", default=[], help="Raw source file (repeatable)"
+    )
+    report.add_argument("--no-zip", action="store_true", help="Skip evidence ZIP")
     report.add_argument(
         "--communal-rate",
         default=None,
@@ -466,7 +510,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_import(args)
     if args.command == "report":
         from utxoproof.config import load_config
-        from utxoproof.reports import write_report
+        from utxoproof.evidence import build_manifest_db, produce_evidence_zip, record_source
+        from utxoproof.reports import write_alltime_page, write_report
 
         config = load_config(args.config)
         communal = (
@@ -474,8 +519,29 @@ def main(argv: list[str] | None = None) -> int:
             if args.communal_rate is not None
             else config.taxpayer.communal_surcharge_rate
         )
+        if args.alltime:
+            target = write_alltime_page(args.input, args.out)
+            print(f"wrote {target}")
+            return 0
+        if args.year is None:
+            raise ValueError("report needs --year Y or --alltime")
         target = write_report(args.input, args.year, args.out, communal, config.classifier)
         print(f"wrote {target}")
+        if not args.no_zip:
+            manifest_db_path = Path(args.out) / "evidence-manifest.db"
+            manifest_db = build_manifest_db(manifest_db_path)
+            for source in [args.input, *args.source]:
+                record_source(manifest_db, source, "source")
+            manifest_db.close()
+            zip_path = produce_evidence_zip(
+                args.year,
+                manifest_db_path,
+                target,
+                [Path(s) for s in args.source],
+                [Path(args.input)],
+                args.out,
+            )
+            print(f"wrote {zip_path}")
         return 0
     if args.command == "setup":
         return _run_setup(args)

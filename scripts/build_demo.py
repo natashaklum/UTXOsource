@@ -166,6 +166,11 @@ def main() -> int:
     )
     links.append('<li><a href="provenance/provenance_D_0.html">Provenance D:0</a></li>')
 
+    from utxoproof.reports import write_alltime_page
+
+    write_alltime_page(ROOT / "tests" / "fixtures" / "manual_2023.csv", out / "alltime")
+    links.append('<li><a href="alltime/summary.html">All-time summary (manual CSV)</a></li>')
+
     (out / "index.html").write_text(INDEX_TEMPLATE.format(links="\n".join(links)), encoding="utf-8")
     print(f"demo site: {out} ({len(links)} reports)")
     return 0

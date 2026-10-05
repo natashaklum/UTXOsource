@@ -415,3 +415,39 @@ def write_provenance_page(
         encoding="utf-8",
     )
     return target
+
+
+def write_alltime_page(csv_path: str | Path, out_dir: str | Path) -> Path:
+    """Render the all-time realized-gains summary into ``out_dir``."""
+    from utxoproof.cli import compute_alltime
+
+    result = compute_alltime(csv_path)
+    per_year = result["per_year"]
+    inventory = result["inventory"]
+    total = sum((row["gain_eur"] for row in per_year), Decimal("0"))
+    template = jinja2.Environment(autoescape=True).from_string(
+        (Path(__file__).parent / "templates" / "alltime.html.j2").read_text(encoding="utf-8")
+    )
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    target = out / "summary.html"
+    target.write_text(
+        template.render(
+            generated_at=datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M UTC"),
+            version=__version__,
+            years=[
+                {
+                    "year": row["year"],
+                    "disposals": row["disposals"],
+                    "gain": f"{row['gain_eur']:.2f}",
+                }
+                for row in per_year
+            ],
+            total_gain=f"{total:.2f}",
+            inventory_btc=f"{inventory['btc']:.8f}",
+            inventory_cost=f"{inventory['cost_eur']:.2f}",
+            disclaimer=DISCLAIMER,
+        ),
+        encoding="utf-8",
+    )
+    return target

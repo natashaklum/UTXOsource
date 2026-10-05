@@ -58,6 +58,9 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   parent, cycle guard, depth cap); `utxoproof provenance txid:vout --db
   [--price/--as-of/--depth/--out]`. Unrealized gain is omitted from the header
   (needs lot matching); first-traced value shown instead.
+- Evidence lives in `utxoproof/evidence.py` (SHA-256 manifest, content dedupe,
+  ZIP bundle). `utxoproof report --year Y [--source F]...` builds it unless
+  `--no-zip`; `report --alltime` writes the per-year summary (no ZIP).
 - Classification lives in `utxoproof/classifier.py` (Sec. 6 scores) with signals
   from `signals_from_csv`; config in `utxoproof/config.py` (`utxoproof.toml`,
   example at `utxoproof.example.toml`). `utxoproof report --config` applies
