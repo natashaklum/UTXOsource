@@ -17,8 +17,11 @@ utxoproof answers three questions:
 
 Sprint 0 (foundation) is done: rp2 + Belgian plugin produce a verified tax
 number, the full SQLite schema exists, and `utxoproof compute` works on
-synthetic data. See the sprint roadmap in `utxo-source-plan_v5.md` (and
-`docs/supported_countries.md` in the rp2 fork) for what comes next.
+synthetic data. Sprint 1 (Kraken CSV + price oracle) and the first HTML tax
+report are done too — demo reports build from fixture data and publish to
+GitHub Pages on every `main` push (enable in repo Settings → Pages → Source:
+GitHub Actions). See the sprint roadmap in `utxo-source-plan_v5.md` for what
+comes next.
 
 ## Quickstart (Sprint 0)
 
@@ -28,6 +31,8 @@ Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 uv venv
 VIRTUAL_ENV=.venv uv pip install -e ".[dev]"
 .venv/bin/utxoproof compute --input tests/fixtures/manual_2023.csv --year 2023
+.venv/bin/utxoproof report --input tests/fixtures/manual_2023.csv --year 2023 --out /tmp/utxo-report
+.venv/bin/python scripts/build_demo.py --out site  # all demo reports + index
 ```
 
 Checks:

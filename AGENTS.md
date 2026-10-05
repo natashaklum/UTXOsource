@@ -30,8 +30,9 @@ uv venv                                            # one-time
 VIRTUAL_ENV=.venv uv pip install -e ".[dev]"
 .venv/bin/utxoproof compute --input tests/fixtures/manual_2023.csv --year 2023
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
-.venv/bin/mypy utxoproof/                          # strict, must be clean
+.venv/bin/mypy utxoproof/ scripts/               # strict, must be clean
 .venv/bin/python -m pytest                         # must pass
+.venv/bin/python scripts/build_demo.py --out site  # demo HTML reports
 ```
 
 No system pip, no `cc` on dev machines: keep runtime deps pure-Python.

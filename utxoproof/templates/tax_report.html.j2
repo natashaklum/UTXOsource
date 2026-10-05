@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>utxoproof tax report {{ year }}</title>
+<style>
+  body { font-family: sans-serif; max-width: 900px; margin: 2em auto; padding: 0 1em; color: #222; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #999; padding: 0.4em 0.6em; text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  th { background: #eee; }
+  .summary td { font-weight: bold; }
+  .disclaimer { font-size: 0.85em; color: #555; border-top: 1px solid #999; margin-top: 2em; padding-top: 1em; }
+  @media print {
+    body { margin: 0; }
+    tr { page-break-inside: avoid; }
+    h1, h2 { page-break-after: avoid; }
+  }
+</style>
+</head>
+<body>
+<h1>utxoproof tax report {{ year }}</h1>
+<p>Generated {{ generated_at }} by utxoproof {{ version }} (demo data).
+Cost basis method: {{ method }}. Classification: {{ classification }}.
+Communal surcharge rate: {{ communal_rate }}.</p>
+
+<h2>Annual summary</h2>
+<table class="summary">
+  <tr><th>Item</th><th>EUR</th></tr>
+  <tr><td>Realised gain/loss ({{ disposal_count }} disposals)</td><td>{{ gain_eur }}</td></tr>
+  <tr><td>Tax (33% divers inkomen)</td><td>{{ tax_eur }}</td></tr>
+  <tr><td>Communal surcharge</td><td>{{ communal_eur }}</td></tr>
+  <tr><td>Total due</td><td>{{ total_eur }}</td></tr>
+</table>
+
+<h2>Disposals</h2>
+<table>
+  <tr><th>Date</th><th>BTC</th><th>Price (EUR/BTC)</th><th>Proceeds (EUR)</th><th>Cost basis (EUR)</th><th>Gain (EUR)</th><th>Tax (EUR)</th></tr>
+  {% for d in disposals %}
+  <tr><td>{{ d.date }}</td><td>{{ d.btc }}</td><td>{{ d.eur_per_btc }}</td><td>{{ d.proceeds_eur }}</td><td>{{ d.cost_basis_eur }}</td><td>{{ d.gain_eur }}</td><td>{{ d.tax_eur }}</td></tr>
+  {% endfor %}
+</table>
+
+<p class="disclaimer">{{ disclaimer }}</p>
+</body>
+</html>

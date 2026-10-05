@@ -13,21 +13,37 @@ import csv
 import sys
 from decimal import Decimal
 from pathlib import Path
+from typing import TypedDict
 
 from utxoproof import __version__
 from utxoproof.belgian_tax import COMMUNAL_SURCHARGE_DEFAULT, apply_belgian_tax
 
 
-def compute_year(csv_path: str | Path, year: int) -> dict[str, Decimal]:
-    """Compute realised gain/loss for ``year`` from a simple manual CSV.
+class DisposalDetail(TypedDict):
+    date: str
+    btc: Decimal
+    eur_per_btc: Decimal
+    proceeds_eur: Decimal
+    cost_basis_eur: Decimal
+    gain_eur: Decimal
 
-    CSV columns: ``date,side,btc,eur_per_btc,fee_eur`` where ``date`` is
-    ``YYYY-MM-DD`` and ``side`` is ``BUY`` or ``SELL``. Moving-average cost
-    basis; buy fees join the cost pool, sell fees reduce proceeds.
+
+class ComputeResult(TypedDict):
+    disposals: list[DisposalDetail]
+    gain_loss_eur: Decimal
+
+
+def compute_details(csv_path: str | Path, year: int) -> ComputeResult:
+    """Per-disposal moving-average detail for ``year`` plus the yearly total.
+
+    Returns ``{"disposals": [...], "gain_loss_eur": Decimal}`` where each
+    disposal has ``date, btc, eur_per_btc, proceeds_eur, cost_basis_eur,
+    gain_eur``. Buy fees join the cost pool, sell fees reduce proceeds.
     """
     total_btc = Decimal("0")
     total_cost = Decimal("0")
     realised_gain = Decimal("0")
+    disposals: list[DisposalDetail] = []
 
     with open(csv_path, newline="", encoding="utf-8") as f:
         for row in csv.DictReader(f):
@@ -45,13 +61,34 @@ def compute_year(csv_path: str | Path, year: int) -> dict[str, Decimal]:
                 avg_unit = total_cost / total_btc if total_btc else Decimal("0")
                 cost_basis = avg_unit * btc
                 proceeds = btc * price - fee
+                gain = proceeds - cost_basis
                 if row_year == year:
-                    realised_gain += proceeds - cost_basis
+                    realised_gain += gain
+                    disposals.append(
+                        {
+                            "date": str(row["date"]),
+                            "btc": btc,
+                            "eur_per_btc": price,
+                            "proceeds_eur": proceeds,
+                            "cost_basis_eur": cost_basis,
+                            "gain_eur": gain,
+                        }
+                    )
                 total_btc -= btc
                 total_cost -= cost_basis
             else:
                 raise ValueError(f"Unknown side {row['side']!r}")
-    return {"gain_loss_eur": realised_gain}
+    return {"disposals": disposals, "gain_loss_eur": realised_gain}
+
+
+def compute_year(csv_path: str | Path, year: int) -> dict[str, Decimal]:
+    """Compute realised gain/loss for ``year`` from a simple manual CSV.
+
+    CSV columns: ``date,side,btc,eur_per_btc,fee_eur`` where ``date`` is
+    ``YYYY-MM-DD`` and ``side`` is ``BUY`` or ``SELL``. Moving-average cost
+    basis; buy fees join the cost pool, sell fees reduce proceeds.
+    """
+    return {"gain_loss_eur": compute_details(csv_path, year)["gain_loss_eur"]}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -85,6 +122,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--out",
         default=None,
         help="Output manual-CSV path (default: stdout)",
+    )
+    report = sub.add_parser("report", help="Generate an HTML tax report")
+    report.add_argument("--input", required=True, help="Manual CSV path")
+    report.add_argument("--year", required=True, type=int, help="Tax year, e.g. 2023")
+    report.add_argument("--out", required=True, help="Output directory for report.html")
+    report.add_argument(
+        "--communal-rate",
+        default=COMMUNAL_SURCHARGE_DEFAULT,
+        type=Decimal,
+        help="Communal surcharge rate (default 0.07)",
     )
     return parser
 
@@ -132,6 +179,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "import":
         return _run_import(args)
+    if args.command == "report":
+        from utxoproof.reports import write_report
+
+        target = write_report(args.input, args.year, args.out, args.communal_rate)
+        print(f"wrote {target}")
+        return 0
     return 1
 
 
