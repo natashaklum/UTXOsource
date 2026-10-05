@@ -190,6 +190,9 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--price", type=Decimal, default=None, help="BTC/EUR price override")
     status.add_argument("--db", default="~/.utxoproof/utxoproof.db")
     status.add_argument("--out", default=None, help="Output directory for status.html")
+    privacy = sub.add_parser("privacy", help="KYC analysis and mixing events")
+    privacy.add_argument("--db", default="~/.utxoproof/utxoproof.db")
+    privacy.add_argument("--out", default=None, help="Output directory for privacy.html")
     return parser
 
 
@@ -261,6 +264,23 @@ def _run_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_privacy(args: argparse.Namespace) -> int:
+    from utxoproof.kyc import detect_mixing_events, kyc_summary, propagate_graph, seed_source_kyc
+    from utxoproof.reports import write_privacy_page
+
+    db = _open_db(args.db)
+    seed_source_kyc(db)
+    propagate_graph(db)
+    summary = kyc_summary(db)
+    print("kyc_summary: " + ", ".join(f"{k}={v}" for k, v in summary.items()))
+    events = detect_mixing_events(db)
+    print(f"mixing_events: {len(events)}")
+    if args.out:
+        target = write_privacy_page(db, args.out)
+        print(f"wrote {target}")
+    return 0
+
+
 def _run_import(args: argparse.Namespace) -> int:
     from utxoproof.kraken_csv import parse_kraken_ledgers, to_manual_csv_rows
 
@@ -316,6 +336,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_sync(args)
     if args.command == "status":
         return _run_status(args)
+    if args.command == "privacy":
+        return _run_privacy(args)
     return 1
 
 

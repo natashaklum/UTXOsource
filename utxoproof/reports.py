@@ -8,6 +8,7 @@ Print-optimised CSS is inline so the artifact is a single self-contained file.
 from __future__ import annotations
 
 import datetime
+import sqlite3
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -218,6 +219,45 @@ def write_status_page(
             avg_cost_eur=f"{status['avg_cost_eur']:.2f}",
             value_eur=f"{status['value_eur']:.2f}",
             unrealized_eur=f"{status['unrealized_eur']:.2f}",
+            disclaimer=DISCLAIMER,
+        ),
+        encoding="utf-8",
+    )
+    return target
+
+
+def write_privacy_page(db: sqlite3.Connection, out_dir: str | Path) -> Path:
+    """Run KYC seeding + propagation, then render the privacy page."""
+    from utxoproof.kyc import detect_mixing_events, kyc_summary, propagate_graph, seed_source_kyc
+
+    seed_source_kyc(db)
+    propagate_graph(db)
+    summary = kyc_summary(db)
+    events = detect_mixing_events(db)
+    template = jinja2.Environment(autoescape=True).from_string(
+        (Path(__file__).parent / "templates" / "privacy.html.j2").read_text(encoding="utf-8")
+    )
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    target = out / "privacy.html"
+    target.write_text(
+        template.render(
+            generated_at=datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M UTC"),
+            version=__version__,
+            summary=[
+                {"status": s, "count": summary[s]} for s in ("kyc", "non_kyc", "mixed", "unknown")
+            ],
+            events=[
+                {
+                    "txid": str(e["txid"]),
+                    "inputs": e["inputs"],
+                    "kyc_inputs": e["kyc_inputs"],
+                    "non_kyc_inputs": e["non_kyc_inputs"],
+                    "value_sat": e["value_sat"],
+                    "originating": e["originating"],
+                }
+                for e in events
+            ],
             disclaimer=DISCLAIMER,
         ),
         encoding="utf-8",

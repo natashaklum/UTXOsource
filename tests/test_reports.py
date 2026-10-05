@@ -3,6 +3,8 @@
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 from utxoproof.reports import build_report, render_report, write_report
 
 FIXTURE = Path(__file__).parent / "fixtures" / "manual_2023.csv"
@@ -54,3 +56,24 @@ def test_descriptors_page_shows_vector_addresses(tmp_path: Path) -> None:
     assert "bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g" in html
     assert "bc1q8c6fshw2dlwun7ekn9qwf37cu2rn755upcp6el" in html
     assert "73c5da0a" in html
+
+
+def test_privacy_page_and_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    import sqlite3
+
+    from utxoproof.cli import main
+    from utxoproof.kyc import create_sample_graph
+    from utxoproof.reports import write_privacy_page
+
+    target = write_privacy_page(create_sample_graph(), tmp_path)
+    html = target.read_text(encoding="utf-8")
+    assert "mixed" in html and "mixing-origin" in html
+
+    db_path = tmp_path / "demo.db"
+    source = create_sample_graph()
+    dest = sqlite3.connect(str(db_path))
+    source.backup(dest)
+    dest.close()
+    assert main(["privacy", "--db", str(db_path), "--out", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "mixed=2" in out and "mixing_events: 2" in out

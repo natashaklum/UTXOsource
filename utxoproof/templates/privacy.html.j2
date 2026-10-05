@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>utxoproof privacy report</title>
+<style>
+  body { font-family: sans-serif; max-width: 900px; margin: 2em auto; padding: 0 1em; color: #222; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #999; padding: 0.4em 0.6em; text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  th { background: #eee; }
+  tr.mixing-origin td { background: #fff3cd; }
+  .disclaimer { font-size: 0.85em; color: #555; border-top: 1px solid #999; margin-top: 2em; padding-top: 1em; }
+  @media print {
+    body { margin: 0; }
+    tr { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<h1>utxoproof privacy report</h1>
+<p>Generated {{ generated_at }} by utxoproof {{ version }} (demo data).
+Unspent outputs by KYC status; mixing events highlighted (amber = originating).</p>
+
+<h2>KYC summary (unspent)</h2>
+<table>
+  <tr><th>Status</th><th>UTXOs</th></tr>
+  {% for row in summary %}
+  <tr><td>{{ row.status }}</td><td>{{ row.count }}</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Mixing events</h2>
+<table>
+  <tr><th>Txid</th><th>Inputs</th><th>KYC in</th><th>Non-KYC in</th><th>Value (sat)</th><th>Originating</th></tr>
+  {% for e in events %}
+  <tr{% if e.originating %} class="mixing-origin"{% endif %}><td>{{ e.txid }}</td><td>{{ e.inputs }}</td><td>{{ e.kyc_inputs }}</td><td>{{ e.non_kyc_inputs }}</td><td>{{ e.value_sat }}</td><td>{{ e.originating }}</td></tr>
+  {% endfor %}
+</table>
+
+<p class="disclaimer">{{ disclaimer }}</p>
+</body>
+</html>

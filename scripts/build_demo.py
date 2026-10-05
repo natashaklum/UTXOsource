@@ -12,7 +12,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from utxoproof.kraken_csv import parse_kraken_ledgers, to_manual_csv_rows
-from utxoproof.reports import write_descriptors_page, write_report, write_status_page
+from utxoproof.kyc import create_sample_graph
+from utxoproof.reports import (
+    write_descriptors_page,
+    write_privacy_page,
+    write_report,
+    write_status_page,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -98,6 +104,10 @@ def main() -> int:
     ):
         write_status_page(csv_path, demo_price, price_note, out / slug)
         links.append(f'<li><a href="{slug}/status.html">Holdings status — {slug}</a></li>')
+
+    # Privacy analysis over the shared sample graph (in-memory demo DB).
+    write_privacy_page(create_sample_graph(), out / "privacy")
+    links.append('<li><a href="privacy/privacy.html">Privacy report (sample graph)</a></li>')
 
     (out / "index.html").write_text(INDEX_TEMPLATE.format(links="\n".join(links)), encoding="utf-8")
     print(f"demo site: {out} ({len(links)} reports)")

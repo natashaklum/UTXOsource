@@ -48,6 +48,8 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
 - Bitcoin Core access goes through `utxoproof/bitcoin_rpc.py` (httpx JSON-RPC) and
   `utxoproof/onchain.py` (tx-graph sync). Daemon-backed tests are marked
   `regtest` and skip without a node; CI `regtest` job starts one via docker.
+- KYC lives in `utxoproof/kyc.py` (proportional propagation, mixing detection);
+  `utxoproof privacy` renders it. Shared sample graph: `create_sample_graph()`.
 - Regtest stack: `docker-compose.regtest.yml` (bitcoind only; no docker on dev
   boxes, so daemon runs are CI-only).
 - SQLite schema (`utxoproof/schema.sql`) is created whole (Sec. 8); schema changes
