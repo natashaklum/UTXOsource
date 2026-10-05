@@ -1,0 +1,5 @@
+Timestamp,Transaction Type,Asset,Quantity Transacted,Spot Price Currency,Spot Price at Transaction,Subtotal,Total (inclusive of fees),Fees,Notes
+2023-01-10T12:00:00Z,Buy,BTC,1.0,EUR,20000,20000,20010,10,coinbase buy
+2023-03-20T15:30:00Z,Sell,BTC,0.5,EUR,25000,12500,12495,5,coinbase sell
+2023-05-01T10:00:00Z,Buy,ETH,2.0,EUR,1500,3000,3005,5,eth skipped
+2023-06-01T09:00:00Z,Send,BTC,0.1,EUR,26000,2600,2600,0,withdrawal

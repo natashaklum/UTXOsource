@@ -29,6 +29,7 @@ class Demo:
     title: str
     csv_path: Path | None
     year: int
+    converter: str = "manual"  # manual | kraken | coinbase
 
 
 DEMOS: list[Demo] = [
@@ -43,6 +44,14 @@ DEMOS: list[Demo] = [
         title="Kraken ledgers.csv import — tax year 2023",
         csv_path=None,  # converted from kraken_ledgers_2023.csv below
         year=2023,
+        converter="kraken",
+    ),
+    Demo(
+        slug="coinbase-2023",
+        title="Coinbase history import — tax year 2023",
+        csv_path=None,  # converted from coinbase_2023.csv below
+        year=2023,
+        converter="coinbase",
     ),
 ]
 
@@ -73,7 +82,12 @@ def main() -> int:
         slug = demo.slug
         year = demo.year
         if demo.csv_path is None:
-            txs = parse_kraken_ledgers(ROOT / "tests" / "fixtures" / "kraken_ledgers_2023.csv")
+            if demo.converter == "coinbase":
+                from utxoproof.coinbase_csv import parse_coinbase_csv
+
+                txs = parse_coinbase_csv(ROOT / "tests" / "fixtures" / "coinbase_2023.csv")
+            else:
+                txs = parse_kraken_ledgers(ROOT / "tests" / "fixtures" / "kraken_ledgers_2023.csv")
             rows = to_manual_csv_rows(txs)
             csv_path = out / f"{slug}.csv"
             with open(csv_path, "w", newline="", encoding="utf-8") as f:
@@ -101,6 +115,7 @@ def main() -> int:
     for slug, csv_path in (
         ("manual-2023", ROOT / "tests" / "fixtures" / "manual_2023.csv"),
         ("kraken-2023", out / "kraken-2023.csv"),
+        ("coinbase-2023", out / "coinbase-2023.csv"),
     ):
         write_status_page(csv_path, demo_price, price_note, out / slug)
         links.append(f'<li><a href="{slug}/status.html">Holdings status — {slug}</a></li>')

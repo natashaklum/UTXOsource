@@ -63,6 +63,10 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   example at `utxoproof.example.toml`). `utxoproof report --config` applies
   communal rate + classifier flags. Progressive speculator rates are NOT
   computed (needs annual bracket table); the report says so.
+- Exchanges: `kraken_csv` / `coinbase_csv` / `binance_csv` / `bisq_csv` yield
+  `exchange.ExchangeTx` (Bisq defaults non_kyc). Banks: `banks.py` profile
+  engine (headers UNVERIFIED, alias-driven); `matching.py` fiat-leg matcher.
+  All non-Kraken shapes are best-effort fixtures for later correction.
 - Regtest stack: `docker-compose.regtest.yml` (bitcoind only; no docker on dev
   boxes, so daemon runs are CI-only).
 - SQLite schema (`utxoproof/schema.sql`) is created whole (Sec. 8); schema changes

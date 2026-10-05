@@ -16,9 +16,10 @@ from __future__ import annotations
 
 import csv
 import datetime
-from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
+
+from utxoproof.exchange import ExchangeTx, to_manual_csv_rows
 
 KYC_STATUS = "kyc"
 SOURCE_TYPE = "exchange_purchase"
@@ -36,18 +37,7 @@ FIAT_ASSETS = {
 }
 
 
-@dataclass
-class KrakenTx:
-    date: datetime.date
-    kind: str  # BUY | SELL | WITHDRAWAL | DEPOSIT
-    btc: Decimal
-    eur_per_btc: Decimal
-    fee_eur: Decimal
-    refid: str
-    kyc_status: str = KYC_STATUS
-    source_type: str = SOURCE_TYPE
-    source_label: str = ""
-    source_evidence: str = ""
+KrakenTx = ExchangeTx  # backward-compat alias
 
 
 def _parse_time(value: str) -> datetime.date:
@@ -94,6 +84,7 @@ def _parse_group(refid: str, rows: list[dict[str, str]], filename: str) -> Krake
             Decimal("0"),
             Decimal("0"),
             refid,
+            exchange="kraken",
             source_label=f"Kraken withdrawal {refid}",
             source_evidence=evidence,
         )
@@ -106,6 +97,7 @@ def _parse_group(refid: str, rows: list[dict[str, str]], filename: str) -> Krake
             Decimal("0"),
             Decimal("0"),
             refid,
+            exchange="kraken",
             source_label=f"Kraken deposit {refid}",
             source_evidence=evidence,
         )
@@ -143,23 +135,16 @@ def _parse_trade(
     side = "buy" if kind == "BUY" else "sell"
     label = f"Kraken trade {refid} ({side} {btc} BTC @ {eur_per_btc:.2f} {fiat_ccy})"
     return KrakenTx(
-        date, kind, btc, eur_per_btc, fee_eur, refid, source_label=label, source_evidence=evidence
+        date,
+        kind,
+        btc,
+        eur_per_btc,
+        fee_eur,
+        refid,
+        exchange="kraken",
+        source_label=label,
+        source_evidence=evidence,
     )
 
 
-def to_manual_csv_rows(txs: list[KrakenTx]) -> list[dict[str, str]]:
-    """Convert BUY/SELL records to manual-CSV rows consumable by ``compute``."""
-    rows = []
-    for tx in txs:
-        if tx.kind not in ("BUY", "SELL"):
-            continue
-        rows.append(
-            {
-                "date": tx.date.isoformat(),
-                "side": tx.kind,
-                "btc": str(tx.btc),
-                "eur_per_btc": str(tx.eur_per_btc),
-                "fee_eur": str(tx.fee_eur),
-            }
-        )
-    return rows
+__all__ = ["ExchangeTx", "KrakenTx", "parse_kraken_ledgers", "to_manual_csv_rows"]

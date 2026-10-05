@@ -1,0 +1,3 @@
+Trade ID,Date,Market,Direction,Price,Amount
+B1,2023-07-01,BTC/EUR,Buy,28000,0.1
+B2,2023-08-01,BTC/EUR,Sell,30000,0.05

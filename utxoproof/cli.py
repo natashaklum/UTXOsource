@@ -149,8 +149,18 @@ def build_parser() -> argparse.ArgumentParser:
     impi.add_argument(
         "--type",
         required=True,
-        choices=["kraken"],
-        help="Exchange type (Sprint 1: kraken only)",
+        choices=[
+            "kraken",
+            "coinbase",
+            "binance",
+            "bisq",
+            "ing",
+            "kbc",
+            "bnp",
+            "belfius",
+            "argenta",
+        ],
+        help="Source type (exchanges -> manual CSV; banks -> bank rows CSV)",
     )
     impi.add_argument(
         "--kyc",
@@ -387,18 +397,43 @@ def _run_provenance(args: argparse.Namespace) -> int:
 
 
 def _run_import(args: argparse.Namespace) -> int:
-    from utxoproof.kraken_csv import parse_kraken_ledgers, to_manual_csv_rows
+    from utxoproof.banks import BANK_PROFILES, parse_bank_csv
+    from utxoproof.binance_csv import parse_binance_csv
+    from utxoproof.bisq_csv import parse_bisq_csv
+    from utxoproof.coinbase_csv import parse_coinbase_csv
+    from utxoproof.exchange import to_manual_csv_rows
+    from utxoproof.kraken_csv import parse_kraken_ledgers
 
-    if args.type == "kraken":
-        txs = parse_kraken_ledgers(args.file)
+    if args.type in ("kraken", "coinbase", "binance", "bisq"):
+        parser = {
+            "kraken": parse_kraken_ledgers,
+            "coinbase": parse_coinbase_csv,
+            "binance": parse_binance_csv,
+            "bisq": parse_bisq_csv,
+        }[args.type]
+        txs = parser(args.file)
         if args.kyc != "kyc":
             for tx in txs:
                 tx.kyc_status = args.kyc
         rows = to_manual_csv_rows(txs)
+    elif args.type in BANK_PROFILES:
+        bank_rows = parse_bank_csv(args.file, args.type)
+        rows = [
+            {
+                "date": r.date.isoformat(),
+                "side": "",
+                "btc": "",
+                "eur_per_btc": "",
+                "fee_eur": "",
+                "description": r.description,
+                "amount_eur": str(r.amount_eur),
+            }
+            for r in bank_rows
+        ]
     else:  # pragma: no cover - argparse choices guard this
         raise ValueError(f"Unsupported type {args.type!r}")
 
-    fieldnames = ["date", "side", "btc", "eur_per_btc", "fee_eur"]
+    fieldnames = list(rows[0].keys()) if rows else ["date"]
     if args.out:
         with open(args.out, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
