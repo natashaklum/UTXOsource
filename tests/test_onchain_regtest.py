@@ -8,6 +8,7 @@ mainnet: refuses any URL that is not regtest localhost.
 import os
 
 import pytest
+from embit import bip32
 
 from utxoproof.bitcoin_rpc import BitcoinRPC, BitcoinRPCError
 from utxoproof.db import open_memory_db
@@ -16,11 +17,14 @@ from utxoproof.onchain import BitcoinCoreOnchainImporter
 
 pytestmark = pytest.mark.regtest
 
-# BIP84 test-vector account xpub; regtest addresses are worthless by construction.
-REGTEST_XPUB = (
+# BIP84 test-vector account key, re-serialized with testnet version bytes:
+# regtest Core rejects mainnet xpub/zpub in importdescriptors.
+_MAINNET_ZPUB = (
     "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCTo"
     "UG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs"
 )
+TPUB_VERSION = b"\x04\x35\x87\xcf"
+REGTEST_XPUB = bip32.HDKey.from_base58(_MAINNET_ZPUB).to_base58(version=TPUB_VERSION)
 
 
 def _node() -> BitcoinRPC:

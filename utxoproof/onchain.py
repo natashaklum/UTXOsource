@@ -45,10 +45,13 @@ class BitcoinCoreOnchainImporter:
 
     def import_descriptor(self, wallet: str, descriptor: str, timestamp: int | str) -> None:
         """Import one ranged descriptor without rescan orchestration (Sprint 3)."""
-        self._rpc.import_descriptors(
+        results = self._rpc.import_descriptors(
             wallet,
             [{"desc": descriptor, "timestamp": timestamp, "range": [0, 1000], "active": False}],
         )
+        failures = [r for r in results if not r.get("success")]
+        if failures:
+            raise BitcoinRPCError(f"importdescriptors rejected {descriptor}: {failures}")
 
     # -- sync ------------------------------------------------------------
 
