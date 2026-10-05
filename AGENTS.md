@@ -58,6 +58,11 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   parent, cycle guard, depth cap); `utxoproof provenance txid:vout --db
   [--price/--as-of/--depth/--out]`. Unrealized gain is omitted from the header
   (needs lot matching); first-traced value shown instead.
+- Classification lives in `utxoproof/classifier.py` (Sec. 6 scores) with signals
+  from `signals_from_csv`; config in `utxoproof/config.py` (`utxoproof.toml`,
+  example at `utxoproof.example.toml`). `utxoproof report --config` applies
+  communal rate + classifier flags. Progressive speculator rates are NOT
+  computed (needs annual bracket table); the report says so.
 - Regtest stack: `docker-compose.regtest.yml` (bitcoind only; no docker on dev
   boxes, so daemon runs are CI-only).
 - SQLite schema (`utxoproof/schema.sql`) is created whole (Sec. 8); schema changes

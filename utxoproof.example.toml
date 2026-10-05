@@ -1,0 +1,23 @@
+# Example utxoproof configuration (plan Sec. 16). Copy to utxoproof.toml and edit.
+# Only [taxpayer], [classifier] and [accounting] are read so far; the
+# [bitcoin]/[price_oracle]/[inputs]/[advisory]/[output] sections arrive with
+# their sprints and are ignored for now.
+
+[taxpayer]
+reference = "BE-LOCAL"
+# Communal surcharge (additional centimes): Brussels 0.0587, Ghent 0.076,
+# Antwerp 0.08, Belgian average 0.07.
+communal_surcharge_rate = 0.07
+
+[accounting]
+method = "moving_average"  # fifo | lifo | hifo | lofo | moving_average
+
+[classifier]
+speculator_threshold = 8
+passive_threshold = 5
+# Self-reported flags the classifier cannot detect from chain/exchange data.
+used_leverage = false
+used_derivatives = false
+has_professional_crypto_income = false
+# Estimated fraction of total declared income from BTC gains (0.0-1.0).
+btc_income_fraction = 0.0

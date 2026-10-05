@@ -167,11 +167,12 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--input", required=True, help="Manual CSV path")
     report.add_argument("--year", required=True, type=int, help="Tax year, e.g. 2023")
     report.add_argument("--out", required=True, help="Output directory for report.html")
+    report.add_argument("--config", default=None, help="utxoproof.toml path")
     report.add_argument(
         "--communal-rate",
-        default=COMMUNAL_SURCHARGE_DEFAULT,
+        default=None,
         type=Decimal,
-        help="Communal surcharge rate (default 0.07)",
+        help="Communal surcharge rate (default: config [taxpayer])",
     )
     setup = sub.add_parser("setup", help="Create watch-only wallet, import xpubs")
     setup.add_argument("--rpc-url", default="http://127.0.0.1:8332")
@@ -429,9 +430,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "import":
         return _run_import(args)
     if args.command == "report":
+        from utxoproof.config import load_config
         from utxoproof.reports import write_report
 
-        target = write_report(args.input, args.year, args.out, args.communal_rate)
+        config = load_config(args.config)
+        communal = (
+            Decimal(args.communal_rate)
+            if args.communal_rate is not None
+            else config.taxpayer.communal_surcharge_rate
+        )
+        target = write_report(args.input, args.year, args.out, communal, config.classifier)
         print(f"wrote {target}")
         return 0
     if args.command == "setup":

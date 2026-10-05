@@ -27,6 +27,7 @@ def test_report_html_contains_figures(tmp_path: Path) -> None:
     assert "4337.67" in html  # gain
     assert "1431.43" in html  # tax
     assert "goede huisvader" in html
+    assert "Speculator score" in html
     assert "fiscaal adviseur" in html
 
 

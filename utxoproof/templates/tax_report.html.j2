@@ -10,6 +10,7 @@
   th:first-child, td:first-child { text-align: left; }
   th { background: #eee; }
   .summary td { font-weight: bold; }
+  pre.rationale { background: #f6f6f6; padding: 1em; white-space: pre-wrap; }
   .disclaimer { font-size: 0.85em; color: #555; border-top: 1px solid #999; margin-top: 2em; padding-top: 1em; }
   @media print {
     body { margin: 0; }
@@ -21,14 +22,21 @@
 <body>
 <h1>utxoproof tax report {{ year }}</h1>
 <p>Generated {{ generated_at }} by utxoproof {{ version }} (demo data).
-Cost basis method: {{ method }}. Classification: {{ classification }}.
+Cost basis method: {{ method }}. Classification: {{ classification_label }}.
 Communal surcharge rate: {{ communal_rate }}.</p>
+
+<h2>Classification</h2>
+<pre class="rationale">{{ rationale }}</pre>
+{% if is_speculator %}
+<p><strong>Note:</strong> speculator gains fall under progressive rates, not the
+33% flat figure shown above. Have an accountant compute the exact liability.</p>
+{% endif %}
 
 <h2>Annual summary</h2>
 <table class="summary">
   <tr><th>Item</th><th>EUR</th></tr>
   <tr><td>Realised gain/loss ({{ disposal_count }} disposals)</td><td>{{ gain_eur }}</td></tr>
-  <tr><td>Tax (33% divers inkomen)</td><td>{{ tax_eur }}</td></tr>
+  <tr><td>Tax ({{ classification_label }})</td><td>{{ tax_eur }}</td></tr>
   <tr><td>Communal surcharge</td><td>{{ communal_eur }}</td></tr>
   <tr><td>Total due</td><td>{{ total_eur }}</td></tr>
 </table>
