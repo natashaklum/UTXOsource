@@ -1,0 +1,10 @@
+utxo-source-plan_v5.md
+.coverage
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+output/
+log/

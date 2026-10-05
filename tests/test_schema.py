@@ -1,0 +1,48 @@
+"""Sprint 0: full Sec. 8 schema is created now (no later retrofit)."""
+
+import sqlite3
+
+from utxoproof.db import open_memory_db
+
+EXPECTED_TABLES = {
+    "transactions",
+    "tx_outputs",
+    "tx_inputs",
+    "price_cache",
+    "sync_state",
+    "source_manifest",
+    "advisory_cache",
+}
+
+
+def test_all_tables_created() -> None:
+    db = open_memory_db()
+    tables = {
+        row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    }
+    assert EXPECTED_TABLES <= tables
+
+
+def test_kyc_defaults() -> None:
+    db = open_memory_db()
+    db.execute("INSERT INTO tx_outputs (txid, vout, value_sat) VALUES ('abc', 0, 100000)")
+    row = db.execute("SELECT kyc_status, kyc_fraction FROM tx_outputs WHERE txid='abc'").fetchone()
+    assert row == ("unknown", "0")
+
+
+def test_source_manifest_dedupes_on_sha256() -> None:
+    db = open_memory_db()
+    db.execute(
+        "INSERT INTO source_manifest "
+        "(filename, sha256, size_bytes, role, imported_at) "
+        "VALUES ('kraken_2023.csv', 'deadbeef', 10, 'source', '2024-01-01')"
+    )
+    try:
+        db.execute(
+            "INSERT INTO source_manifest "
+            "(filename, sha256, size_bytes, role, imported_at) "
+            "VALUES ('kraken_2023_copy.csv', 'deadbeef', 10, 'source', '2024-01-02')"
+        )
+    except sqlite3.IntegrityError:
+        return
+    raise AssertionError("duplicate sha256 import was not rejected")
