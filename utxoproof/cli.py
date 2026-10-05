@@ -205,6 +205,13 @@ def build_parser() -> argparse.ArgumentParser:
     advise.add_argument(
         "--min-value", type=Decimal, default=Decimal("0"), help="Min EUR value to show"
     )
+    prov = sub.add_parser("provenance", help="Chain-of-custody report for a UTXO")
+    prov.add_argument("utxo", help="txid:vout")
+    prov.add_argument("--db", default="~/.utxoproof/utxoproof.db")
+    prov.add_argument("--price", type=Decimal, default=None, help="Current BTC/EUR price")
+    prov.add_argument("--as-of", default=None, help="As-of date YYYY-MM-DD (default: today)")
+    prov.add_argument("--depth", type=int, default=100, help="Max chain depth")
+    prov.add_argument("--out", default=None, help="Output directory")
     return parser
 
 
@@ -336,6 +343,48 @@ def _run_privacy(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_provenance(args: argparse.Namespace) -> int:
+    from utxoproof.provenance import build_provenance_chain
+    from utxoproof.reports import write_provenance_page
+
+    try:
+        txid, vout_str = args.utxo.rsplit(":", 1)
+        vout = int(vout_str)
+    except ValueError:
+        raise ValueError(f"UTXO must look like txid:vout, got {args.utxo!r}") from None
+    db = _open_db(args.db)
+    as_of = (
+        datetime.date.fromisoformat(args.as_of)
+        if args.as_of
+        else datetime.datetime.now(datetime.UTC).date()
+    )
+    price: Decimal
+    curve: Callable[[datetime.date], Decimal]
+    if args.price is not None:
+        price = Decimal(args.price)
+        note = "explicit --price"
+
+        def curve(_day: datetime.date) -> Decimal:
+            return price
+
+    else:
+        from utxoproof.price_oracle import EURPriceOracle
+
+        oracle = EURPriceOracle(db)
+        curve = oracle.get_btc_eur
+        note = "daily close per step date"
+        price = oracle.get_btc_eur(as_of)
+    steps = build_provenance_chain(txid, vout, db, curve, args.depth)
+    print(
+        f"chain: {len(steps)} steps back to {steps[0].txid}:{steps[0].vout}" if steps else "empty"
+    )
+    print(f"price_note: {note}")
+    if args.out:
+        target = write_provenance_page(db, txid, vout, curve, price, as_of, args.out, args.depth)
+        print(f"wrote {target}")
+    return 0
+
+
 def _run_import(args: argparse.Namespace) -> int:
     from utxoproof.kraken_csv import parse_kraken_ledgers, to_manual_csv_rows
 
@@ -395,6 +444,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_privacy(args)
     if args.command == "advise":
         return _run_advise(args)
+    if args.command == "provenance":
+        return _run_provenance(args)
     return 1
 
 

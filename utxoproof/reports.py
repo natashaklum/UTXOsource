@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -303,6 +304,96 @@ def write_advisory_page(
             total_tax_eur=f"{summary['total_tax_eur']:.2f}",
             estate_value_eur=f"{summary['estate_value_eur']:.2f}",
             borrow_value_eur=f"{summary['borrow_value_eur']:.2f}",
+            disclaimer=DISCLAIMER,
+        ),
+        encoding="utf-8",
+    )
+    return target
+
+
+def write_provenance_page(
+    db: sqlite3.Connection,
+    txid: str,
+    vout: int,
+    price_at: Callable[[datetime.date], Decimal],
+    current_price_eur: Decimal,
+    as_of: datetime.date,
+    out_dir: str | Path,
+    max_depth: int = 100,
+) -> Path:
+    """Render the chain-of-custody page for ``txid:vout`` into ``out_dir``."""
+    from utxoproof.advisory import analyze_utxo
+    from utxoproof.kyc import propagate_graph, seed_source_kyc
+    from utxoproof.provenance import build_provenance_chain, db_get_output
+
+    seed_source_kyc(db)
+    propagate_graph(db)
+    steps = build_provenance_chain(txid, vout, db, price_at, max_depth)
+    if not steps:
+        raise ValueError(f"UTXO {txid}:{vout} not found")
+    first, selected = steps[0], steps[-1]
+    days_held = (as_of - first.block_time.date()).days
+    current_value = selected.amount_btc * current_price_eur
+    advisory = analyze_utxo(
+        txid,
+        vout,
+        selected.amount_btc,
+        first.block_time.date(),
+        first.eur_value,
+        current_value,
+        selected.kyc_status,
+        selected.kyc_fraction,
+        as_of,
+    )
+    branches = []
+    for step in steps:
+        if len(step.parent_utxos) > 1:
+            for parent in step.parent_utxos:
+                row = db_get_output(db, parent[0], parent[1])
+                if row is None:
+                    continue
+                branches.append(
+                    {
+                        "step": step.step_number,
+                        "utxo": f"{parent[0]}:{parent[1]}",
+                        "btc": f"{Decimal(row['value_sat']) / Decimal(100_000_000):.8f}",
+                        "kyc": row["kyc_status"],
+                    }
+                )
+    template = jinja2.Environment(autoescape=True).from_string(
+        (Path(__file__).parent / "templates" / "provenance.html.j2").read_text(encoding="utf-8")
+    )
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    target = out / f"provenance_{txid}_{vout}.html"
+    target.write_text(
+        template.render(
+            txid=txid,
+            vout=vout,
+            amount_btc=f"{selected.amount_btc:.8f}",
+            current_value_eur=f"{current_value:.2f}",
+            current_price_eur=f"{current_price_eur:.2f}",
+            kyc_status=selected.kyc_status,
+            kyc_fraction=f"{selected.kyc_fraction:.0%}",
+            days_held=days_held,
+            flags=",".join(sorted(f.value for f in advisory.flags)),
+            steps=[
+                {
+                    "n": s.step_number,
+                    "date": s.block_time.date().isoformat(),
+                    "block": s.block_height if s.block_height is not None else "—",
+                    "event": s.event_description,
+                    "btc": f"{s.amount_btc:.8f}",
+                    "eur_price": f"{s.eur_price:.2f}",
+                    "eur_value": f"{s.eur_value:.2f}",
+                    "kyc": s.kyc_status,
+                    "evidence": s.source_evidence or s.txid,
+                    "mixing": s.mixing_event,
+                }
+                for s in steps
+            ],
+            branches=branches,
+            evidence=sorted({s.source_evidence for s in steps if s.source_evidence}),
             disclaimer=DISCLAIMER,
         ),
         encoding="utf-8",

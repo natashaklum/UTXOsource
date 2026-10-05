@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>utxoproof provenance {{ txid }}:{{ vout }}</title>
+<style>
+  body { font-family: sans-serif; max-width: 1000px; margin: 2em auto; padding: 0 1em; color: #222; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: 0.9em; }
+  th, td { border: 1px solid #999; padding: 0.4em 0.6em; text-align: right; }
+  th:first-child, td:first-child, td:nth-child(4), td:nth-child(8), td:nth-child(9) { text-align: left; }
+  th { background: #eee; }
+  tr.mixing td { background: #fff3cd; }
+  code { word-break: break-all; }
+  .disclaimer { font-size: 0.85em; color: #555; border-top: 1px solid #999; margin-top: 2em; padding-top: 1em; }
+  @media print {
+    body { margin: 0; }
+    tr { page-break-inside: avoid; }
+    h1, h2 { page-break-after: avoid; }
+  }
+</style>
+</head>
+<body>
+<h1>UTXO provenance <code>{{ txid }}:{{ vout }}</code></h1>
+<p>Current amount: {{ amount_btc }} BTC ({{ current_value_eur }} EUR at {{ current_price_eur }}/BTC).
+KYC status: {{ kyc_status }} ({{ kyc_fraction }}).
+Days held since earliest traced acquisition: {{ days_held }}.
+Advisory flags: {{ flags }}.</p>
+
+<h2>Provenance chain (oldest first)</h2>
+<table>
+  <tr><th>Step</th><th>Date</th><th>Block</th><th>Event</th><th>BTC</th><th>EUR/BTC</th><th>Value (EUR)</th><th>KYC</th><th>Evidence</th></tr>
+  {% for s in steps %}
+  <tr{% if s.mixing %} class="mixing"{% endif %}><td>{{ s.n }}</td><td>{{ s.date }}</td><td>{{ s.block }}</td><td>{{ s.event }}</td><td>{{ s.btc }}</td><td>{{ s.eur_price }}</td><td>{{ s.eur_value }}</td><td>{{ s.kyc }}</td><td>{{ s.evidence }}</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Branch detail (consolidations)</h2>
+<table>
+  <tr><th>Step</th><th>Parent UTXO</th><th>BTC</th><th>KYC</th></tr>
+  {% for b in branches %}
+  <tr><td>{{ b.step }}</td><td><code>{{ b.utxo }}</code></td><td>{{ b.btc }}</td><td>{{ b.kyc }}</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Evidence references</h2>
+<ul>
+  {% for e in evidence %}
+  <li><code>{{ e }}</code></li>
+  {% endfor %}
+</ul>
+
+<p class="disclaimer">{{ disclaimer }}</p>
+</body>
+</html>

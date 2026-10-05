@@ -143,6 +143,14 @@ def main() -> int:
     )
     links.append('<li><a href="advisory/advisory.html">Advisory (sample graph)</a></li>')
 
+    # Provenance chain for D:0 over the same demo DB.
+    from utxoproof.reports import write_provenance_page
+
+    write_provenance_page(
+        demo_db, "D", 0, lambda day: curve[day], _Decimal("40000"), as_of, out / "provenance"
+    )
+    links.append('<li><a href="provenance/provenance_D_0.html">Provenance D:0</a></li>')
+
     (out / "index.html").write_text(INDEX_TEMPLATE.format(links="\n".join(links)), encoding="utf-8")
     print(f"demo site: {out} ({len(links)} reports)")
     return 0

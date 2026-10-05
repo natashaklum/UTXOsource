@@ -54,6 +54,10 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   cost basis is acquisition-date close (rp2 lot integration pending).
   `utxoproof advise --db --price --as-of [--out]`; speculation taint defaults
   off until the Sprint 7 classifier feeds it.
+- Provenance lives in `utxoproof/provenance.py` (backward graph walk, largest
+  parent, cycle guard, depth cap); `utxoproof provenance txid:vout --db
+  [--price/--as-of/--depth/--out]`. Unrealized gain is omitted from the header
+  (needs lot matching); first-traced value shown instead.
 - Regtest stack: `docker-compose.regtest.yml` (bitcoind only; no docker on dev
   boxes, so daemon runs are CI-only).
 - SQLite schema (`utxoproof/schema.sql`) is created whole (Sec. 8); schema changes
