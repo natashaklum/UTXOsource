@@ -1,7 +1,9 @@
-"""Sprint 0 CLI: ``utxoproof compute --input manual.csv --year 2023``.
+"""utxoproof CLI.
 
-Minimal moving-average gain/loss + Belgian tax. Throwaway verification path for
-Sprint 0; grows into ``report --year`` in Sprint 2.
+Sprint 0: ``compute --input manual.csv --year Y`` (throwaway verification path,
+grows into ``report --year`` in Sprint 2).
+Sprint 1: ``import --file kraken.csv --type kraken`` converts an exchange export
+to manual-CSV rows for ``compute``.
 """
 
 from __future__ import annotations
@@ -65,7 +67,55 @@ def build_parser() -> argparse.ArgumentParser:
         type=Decimal,
         help="Communal surcharge rate (default 0.07)",
     )
+    impi = sub.add_parser("import", help="Convert an exchange export to manual CSV")
+    impi.add_argument("--file", required=True, help="Source file to import")
+    impi.add_argument(
+        "--type",
+        required=True,
+        choices=["kraken"],
+        help="Exchange type (Sprint 1: kraken only)",
+    )
+    impi.add_argument(
+        "--kyc",
+        default="kyc",
+        choices=["kyc", "non_kyc", "unknown"],
+        help="Override KYC status (default: exchange default)",
+    )
+    impi.add_argument(
+        "--out",
+        default=None,
+        help="Output manual-CSV path (default: stdout)",
+    )
     return parser
+
+
+def _run_import(args: argparse.Namespace) -> int:
+    from utxoproof.kraken_csv import parse_kraken_ledgers, to_manual_csv_rows
+
+    if args.type == "kraken":
+        txs = parse_kraken_ledgers(args.file)
+        if args.kyc != "kyc":
+            for tx in txs:
+                tx.kyc_status = args.kyc
+        rows = to_manual_csv_rows(txs)
+    else:  # pragma: no cover - argparse choices guard this
+        raise ValueError(f"Unsupported type {args.type!r}")
+
+    fieldnames = ["date", "side", "btc", "eur_per_btc", "fee_eur"]
+    if args.out:
+        with open(args.out, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+    else:
+        writer = csv.DictWriter(sys.stdout, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+    print(
+        f"imported {len(rows)} transactions ({args.type})",
+        file=sys.stderr,
+    )
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -80,6 +130,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"communal_surcharge_eur: {tax['communal_surcharge_eur']:.2f}")
         print(f"total_eur: {tax['total_eur']:.2f}")
         return 0
+    if args.command == "import":
+        return _run_import(args)
     return 1
 
 
