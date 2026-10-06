@@ -1,38 +1,7 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>utxoproof descriptor check</title>
-<style>
-  body { font-family: sans-serif; max-width: 900px; margin: 2em auto; padding: 0 1em; color: #222; }
-  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
-  th, td { border: 1px solid #999; padding: 0.4em 0.6em; text-align: left; }
-  th { background: #eee; }
-  code { word-break: break-all; }
-  .demo-banner { background: #fff3cd; border: 2px solid #e8a13d; border-radius: 8px;
-    padding: 0.8em 1em; margin: 1em 0; font-weight: bold; text-align: center; }
-</style>
-</head>
-<body>
-{% if demo_notice %}<div class="demo-banner">{{ demo_notice }}</div>{% endif %}
+{% extends "base.html.j2" %}
+{% from "sections.html.j2" import descriptors_section %}
+{% block title %}utxoproof descriptor check{% endblock %}
+{% block content %}
 <h1>utxoproof descriptor check</h1>
-<p>Addresses below are derived live by <code>utxoproof.descriptors</code> from the
-BIP84 spec-vector account xpub (<code>{{ xpub }}</code>, fingerprint
-<code>{{ fingerprint }}</code>). They must match the BIP84 vectors exactly.</p>
-
-<h2>Descriptors (Bitcoin Core import)</h2>
-<table>
-  <tr><th>Chain</th><th>Descriptor</th></tr>
-  <tr><td>external</td><td><code>{{ external }}</code></td></tr>
-  <tr><td>change</td><td><code>{{ change }}</code></td></tr>
-</table>
-
-<h2>First addresses (mainnet)</h2>
-<table>
-  <tr><th>Path</th><th>Address</th></tr>
-  {% for row in addresses %}
-  <tr><td>{{ row.path }}</td><td><code>{{ row.address }}</code></td></tr>
-  {% endfor %}
-</table>
-</body>
-</html>
+{{ descriptors_section(descriptors, intro) }}
+{% endblock %}

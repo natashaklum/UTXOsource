@@ -1,46 +1,7 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>utxoproof advisory</title>
-<style>
-  body { font-family: sans-serif; max-width: 1000px; margin: 2em auto; padding: 0 1em; color: #222; }
-  table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: 0.9em; }
-  th, td { border: 1px solid #999; padding: 0.4em 0.6em; text-align: right; }
-  th:first-child, td:first-child, td:nth-child(9) { text-align: left; }
-  th { background: #eee; }
-  .demo-banner { background: #fff3cd; border: 2px solid #e8a13d; border-radius: 8px;
-    padding: 0.8em 1em; margin: 1em 0; font-weight: bold; text-align: center; }
-  .disclaimer { font-size: 0.85em; color: #555; border-top: 1px solid #999; margin-top: 2em; padding-top: 1em; }
-  @media print {
-    body { margin: 0; }
-    tr { page-break-inside: avoid; }
-  }
-</style>
-</head>
-<body>
-{% if demo_notice %}<div class="demo-banner">{{ demo_notice }}</div>{% endif %}
+{% extends "base.html.j2" %}
+{% from "sections.html.j2" import advisory_section %}
+{% block title %}utxoproof advisory{% endblock %}
+{% block content %}
 <h1>utxoproof advisory</h1>
-<p>As of {{ as_of }} at {{ current_price_eur }} EUR/BTC ({{ price_note }}).
-Ranked by tax cost if sold. Selling everything today would cost
-{{ total_tax_eur }} EUR in tax.</p>
-
-<h2>Per-UTXO table</h2>
-<table>
-  <tr><th>UTXO</th><th>BTC</th><th>Holding (days)</th><th>Cost (EUR)</th><th>Value (EUR)</th><th>Gain (EUR)</th><th>Tax if sold (EUR)</th><th>KYC</th><th>Flags</th></tr>
-  {% for a in advisories %}
-  <tr><td>{{ a.utxo }}</td><td>{{ a.btc }}</td><td>{{ a.holding_days }}</td><td>{{ a.cost_eur }}</td><td>{{ a.value_eur }}</td><td>{{ a.gain_eur }}</td><td>{{ a.tax_eur }}</td><td>{{ a.kyc }}</td><td>{{ a.flags }}</td></tr>
-  {% endfor %}
-</table>
-
-<h2>Summary</h2>
-<table>
-  <tr><th>Item</th><th>EUR</th></tr>
-  <tr><td>Total tax cost of liquidating</td><td>{{ total_tax_eur }}</td></tr>
-  <tr><td>Estate-candidate value</td><td>{{ estate_value_eur }}</td></tr>
-  <tr><td>Borrow-candidate value</td><td>{{ borrow_value_eur }}</td></tr>
-</table>
-
-<p class="disclaimer">{{ disclaimer }}</p>
-</body>
-</html>
+{{ advisory_section(advisory, intro) }}
+{% endblock %}

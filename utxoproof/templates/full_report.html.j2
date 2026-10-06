@@ -1,0 +1,29 @@
+{% extends "base.html.j2" %}
+{% from "sections.html.j2" import tax_section, status_section, alltime_section, privacy_section, advisory_section, provenance_section, descriptors_section, overview_section %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+<div class="report-intro">{{ intro }}</div>
+
+<div class="toc">
+<h2>Contents</h2>
+<ul>
+  {% for s in sections %}
+  <li><a href="#{{ s.id }}">{{ s.title }}</a></li>
+  {% endfor %}
+</ul>
+</div>
+
+{% if overview %}
+<section class="report-section" id="overview">{{ overview_section(overview, overview_intro) }}</section>
+{% endif %}
+<section class="report-section" id="tax">{{ tax_section(tax, tax_intro) }}</section>
+<section class="report-section" id="status">{{ status_section(status, status_intro) }}</section>
+<section class="report-section" id="alltime">{{ alltime_section(alltime, alltime_intro) }}</section>
+<section class="report-section" id="privacy">{{ privacy_section(privacy, privacy_intro) }}</section>
+<section class="report-section" id="advisory">{{ advisory_section(advisory, advisory_intro) }}</section>
+{% for p in provenances %}
+<section class="report-section" id="provenance-{{ p.txid }}-{{ p.vout }}">{{ provenance_section(p, provenance_intro) }}</section>
+{% endfor %}
+<section class="report-section" id="descriptors">{{ descriptors_section(descriptors, descriptors_intro) }}</section>
+{% endblock %}

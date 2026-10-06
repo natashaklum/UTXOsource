@@ -22,6 +22,7 @@ from typing import TypedDict
 
 from utxoproof import __version__
 from utxoproof.belgian_tax import COMMUNAL_SURCHARGE_DEFAULT, apply_belgian_tax
+from utxoproof.config import Config
 from utxoproof.paths import add_data_dir_arg, db_path, evidence_root
 
 
@@ -220,7 +221,19 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--alltime", action="store_true", help="All-time summary instead")
     report.add_argument("--out", required=True, help="Output directory")
     report.add_argument("--config", default=None, help="utxoproof.toml path")
+    report.add_argument("--db", default=None, help="SQLite DB (full report + oracle)")
     report.add_argument("--evidence-dir", default=None, help="Evidence root")
+    report.add_argument("--full", action="store_true", help="Compose fullreport.html too")
+    report.add_argument(
+        "--utxo",
+        action="append",
+        default=[],
+        help="txid:vout for provenance (repeatable; default: all unspent, max 25)",
+    )
+    report.add_argument(
+        "--price", type=Decimal, default=None, help="BTC/EUR price (full report only)"
+    )
+    report.add_argument("--as-of", default=None, help="As-of date YYYY-MM-DD")
     report.add_argument(
         "--source", action="append", default=[], help="Raw source file (repeatable)"
     )
@@ -289,6 +302,53 @@ def _open_db(path: str) -> sqlite3.Connection:
     db = sqlite3.connect(str(db_path))
     init_db(db)
     return db
+
+
+def _write_full_from_args(args: argparse.Namespace, communal: Decimal, config: Config) -> Path:
+    """Compose fullreport.html from report args (db + oracle/constant curve)."""
+    from utxoproof.reports import write_full_report
+
+    db = _open_db(str(db_path(args)))
+    price, note = _resolve_price(args.price, args)
+    as_of = (
+        datetime.date.fromisoformat(args.as_of)
+        if args.as_of
+        else datetime.datetime.now(datetime.UTC).date()
+    )
+
+    def curve(day: datetime.date) -> Decimal:
+        return price
+
+    targets = _parse_utxo_targets(args, db)
+    return write_full_report(
+        db=db,
+        csv_path=args.input,
+        year=args.year,
+        out_dir=args.out,
+        price_at=curve,
+        current_price_eur=price,
+        price_note=note,
+        as_of=as_of,
+        communal_rate=communal,
+        classifier_cfg=config.classifier,
+        provenance_targets=targets,
+    )
+
+
+def _parse_utxo_targets(args: argparse.Namespace, db: sqlite3.Connection) -> list[tuple[str, int]]:
+    """Explicit --utxo list, else all unspent (capped)."""
+    if args.utxo:
+        targets = []
+        for item in args.utxo:
+            txid, vout = item.rsplit(":", 1)
+            targets.append((txid, int(vout)))
+        return targets
+    rows = db.execute(
+        "SELECT txid, vout FROM tx_outputs WHERE spent_by_txid IS NULL LIMIT 26"
+    ).fetchall()
+    if len(rows) > 25:
+        print("note: provenance limited to 25 UTXOs")
+    return [(r[0], r[1]) for r in rows[:25]]
 
 
 def _run_setup(args: argparse.Namespace) -> int:
@@ -563,6 +623,9 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("report needs --year Y or --alltime")
         target = write_report(args.input, args.year, args.out, communal, config.classifier)
         print(f"wrote {target}")
+        if args.full:
+            full = _write_full_from_args(args, communal, config)
+            print(f"wrote {full}")
         if not args.no_zip:
             manifest_db_path = Path(args.out) / "evidence-manifest.db"
             manifest_db = build_manifest_db(manifest_db_path)

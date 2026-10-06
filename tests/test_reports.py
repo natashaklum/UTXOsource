@@ -113,3 +113,100 @@ def test_docs_page_builds(tmp_path: Path) -> None:
     _write_docs_page(out)
     html = (out / "docs" / "usage.html").read_text(encoding="utf-8")
     assert "utxoproof user guide" in html and "demo-banner" in html
+
+
+def test_full_report_composes_all_sections_once(tmp_path: Path) -> None:
+    import datetime
+    from decimal import Decimal as _Decimal
+
+    from utxoproof.kyc import create_sample_graph
+    from utxoproof.portfolio import Entity, Portfolio, UtxoHolding
+    from utxoproof.reports import write_full_report
+
+    db = create_sample_graph()
+    curve = {
+        datetime.date(2023, 1, 1): _Decimal("20000"),
+        datetime.date(2023, 2, 1): _Decimal("25000"),
+        datetime.date(2023, 3, 1): _Decimal("30000"),
+    }
+    portfolio = Portfolio(
+        entities=[Entity("cold", "wallet", "Cold", "")],
+        utxos=[
+            UtxoHolding(
+                "cold", "D", 0, _Decimal("1.5"), _Decimal("60000"), "mixed", _Decimal("45000")
+            )
+        ],
+        fiat=[],
+        current_price_eur=_Decimal("40000"),
+    )
+    target = write_full_report(
+        db=db,
+        csv_path=Path(__file__).parent / "fixtures" / "manual_2023.csv",
+        year=2023,
+        out_dir=tmp_path,
+        price_at=lambda day: curve[day],
+        current_price_eur=_Decimal("40000"),
+        price_note="test curve",
+        as_of=datetime.date(2024, 6, 1),
+        provenance_targets=[("D", 0)],
+        portfolio=portfolio,
+        demo_notice="DEMO",
+    )
+    html = target.read_text(encoding="utf-8")
+    for anchor in (
+        "#overview",
+        "#tax",
+        "#status",
+        "#alltime",
+        "#privacy",
+        "#advisory",
+        "#provenance-D-0",
+        "#descriptors",
+    ):
+        assert html.count(f'href="{anchor}"') == 1, anchor
+        assert html.count(f'id="{anchor[1:]}"') == 1, anchor
+    # Section bodies appear exactly once (no duplicated markup).
+    assert html.count("Annual summary") == 1
+    assert html.count("Mixing events") == 1
+    assert "utxoproof full report 2023" in html
+    assert "What you owe for the year" in html  # intros travel along
+
+
+def test_cli_full_report(tmp_path: Path) -> None:
+    import sqlite3
+
+    from utxoproof.cli import main
+    from utxoproof.kyc import create_sample_graph
+
+    db_path = tmp_path / "full.db"
+    dest = sqlite3.connect(str(db_path))
+    create_sample_graph().backup(dest)
+    dest.close()
+    out = tmp_path / "full-out"
+    assert (
+        main(
+            [
+                "report",
+                "--input",
+                str(Path(__file__).parent / "fixtures" / "manual_2023.csv"),
+                "--year",
+                "2023",
+                "--out",
+                str(out),
+                "--db",
+                str(db_path),
+                "--price",
+                "40000",
+                "--as-of",
+                "2024-06-01",
+                "--full",
+                "--utxo",
+                "D:0",
+                "--no-zip",
+            ]
+        )
+        == 0
+    )
+    html = (out / "fullreport.html").read_text(encoding="utf-8")
+    assert "utxoproof full report 2023" in html
+    assert "Consolidation (2 inputs merged)" in html

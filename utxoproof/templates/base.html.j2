@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{% block title %}utxoproof{% endblock %}</title>
+<style>
+  body { font-family: sans-serif; max-width: 1000px; margin: 2em auto; padding: 0 1em; color: #222; background: #fafbfc; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; background: #fff; font-size: 0.92em; }
+  th, td { border: 1px solid #ddd; padding: 0.5em 0.7em; text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  th { background: #eef2f7; }
+  a { color: #2f6fed; }
+  code { word-break: break-all; }
+  .cards { display: flex; gap: 1em; flex-wrap: wrap; margin: 1em 0; }
+  .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 1em 1.2em; min-width: 180px; }
+  .card .big { font-size: 1.6em; font-weight: bold; }
+  .card .sub, p.sub { color: #555; font-size: 0.85em; }
+  .summary td { font-weight: bold; }
+  pre.rationale { background: #f6f6f6; padding: 1em; white-space: pre-wrap; }
+  tr.mixing td, tr.mixing-origin td { background: #fff3cd; }
+  .charts { display: flex; gap: 2em; flex-wrap: wrap; align-items: flex-start; }
+  .donut { border-radius: 50%; position: relative; }
+  .donut-hole { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); border-radius: 50%; background: #fafbfc; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .donut-total { font-size: 1.1em; font-weight: bold; }
+  .donut-share { font-size: 0.85em; color: #555; }
+  .donut-block { max-width: 240px; }
+  ul.legend { list-style: none; padding: 0; margin: 0.5em 0; }
+  ul.legend li { margin: 0.2em 0; font-size: 0.9em; }
+  span.dot { display: inline-block; width: 0.8em; height: 0.8em; border-radius: 50%; margin-right: 0.4em; }
+  .demo-banner { background: #fff3cd; border: 2px solid #e8a13d; border-radius: 8px; padding: 0.8em 1em; margin: 1em 0; font-weight: bold; text-align: center; }
+  .report-intro { background: #eef2f7; border-radius: 8px; padding: 0.8em 1em; margin: 1em 0; }
+  .disclaimer { font-size: 0.85em; color: #555; border-top: 1px solid #ddd; margin-top: 2em; padding-top: 1em; }
+  .toc ul { list-style: none; padding: 0; }
+  .toc li { margin: 0.3em 0; }
+  @media print {
+    body { margin: 0; background: #fff; }
+    tr, .card { page-break-inside: avoid; }
+    h1, h2 { page-break-after: avoid; }
+    section.report-section { page-break-before: always; }
+    section.report-section:first-of-type { page-break-before: avoid; }
+    a { color: #222; text-decoration: none; }
+    .cards { gap: 0.5em; }
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #14171c; color: #e6e8eb; }
+    .card, table { background: #1d2127; }
+    th { background: #262c34; }
+    th, td { border-color: #3a414b; }
+    a { color: #7aa5ff; }
+    .card .sub, p.sub, .disclaimer, .donut-share { color: #a7adb5; }
+    .report-intro, pre.rationale { background: #1d2127; }
+    .donut-hole { background: #14171c; }
+    tr.mixing td, tr.mixing-origin td { background: #4a3f1d; }
+  }
+</style>
+</head>
+<body>
+{% if demo_notice %}<div class="demo-banner">{{ demo_notice }}</div>{% endif %}
+{% block content %}{% endblock %}
+<p class="disclaimer">{{ disclaimer }}</p>
+</body>
+</html>

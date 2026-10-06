@@ -296,8 +296,32 @@ def main() -> int:
         flags_by_utxo,
         demo_notice=DEMO_NOTICE,
     )
+
+    # Full printable report combining every section (same builders + macros
+    # as the single pages — no duplicated markup).
+    from utxoproof.reports import write_full_report
+
+    write_full_report(
+        db=demo_db,
+        csv_path=ROOT / "tests" / "fixtures" / "manual_2023.csv",
+        year=2023,
+        out_dir=out / "full",
+        price_at=lambda day: curve[day],
+        current_price_eur=Decimal("40000"),
+        price_note="illustrative demo curve",
+        as_of=as_of,
+        provenance_targets=[("C", 1), ("D", 0)],
+        portfolio=portfolio,
+        price_history_svg=sparkline,
+        demo_notice=DEMO_NOTICE,
+        evidence_root=out / "demo-evidence",
+        evidence_url_prefix="../demo-evidence",
+    )
     links.insert(
-        0, '<li><a href="overview/overview.html"><strong>Portfolio overview</strong></a></li>'
+        0, '<li><a href="full/fullreport.html"><strong>Full report (everything)</strong></a></li>'
+    )
+    links.insert(
+        1, '<li><a href="overview/overview.html"><strong>Portfolio overview</strong></a></li>'
     )
 
     _write_docs_page(out)

@@ -110,6 +110,74 @@ def build_report(
     )
 
 
+INTROS = {
+    "tax": (
+        "What you owe for the year. Every disposal is valued at moving-average "
+        "cost, gains are classified (goede huisvader / speculator) with the "
+        "reasoning shown, and communal surcharge is applied. Use the totals to "
+        "fill your return — and verify them with a tax adviser before filing."
+    ),
+    "status": (
+        "A snapshot of what you hold right now: inventory at moving-average "
+        "cost, current value at the stated price, and the unrealized gain "
+        "sitting in your wallets. Re-run with a fresh price any time."
+    ),
+    "privacy": (
+        "Where your coins stand on KYC. Every unspent output is tagged from "
+        "its lineage; transactions that first combine KYC and non-KYC inputs "
+        "are listed as originating mixing events so you can explain them."
+    ),
+    "advisory": (
+        "Decision support per UTXO, ranked by tax cost if sold today. Flags "
+        "mark cheap sales, expensive holds, borrow and estate candidates, "
+        "privacy risks and speculation taint. Advice, not instructions."
+    ),
+    "provenance": (
+        "Chain of custody for one UTXO, oldest step first: every hop valued "
+        "in euros at its date, KYC status per step, mixing highlighted, and "
+        "the original source evidence linked. The document you hand over "
+        "when asked where a coin came from."
+    ),
+    "descriptors": (
+        "Self-check that this tool derives the same addresses as every other "
+        "BIP84 wallet: descriptors and first addresses are recomputed live "
+        "from the spec test vector and must match it exactly."
+    ),
+    "alltime": (
+        "Realised gains year by year plus what is still sitting in inventory "
+        "at cost. The long view across all imported history."
+    ),
+    "overview": (
+        "The whole portfolio on one page: net worth, allocation across "
+        "wallets, bank and exchange balances, and the KYC split. Click an "
+        "entity for its UTXOs, then a UTXO for its provenance."
+    ),
+    "entity": (
+        "Everything held in one place: each UTXO with value and KYC status, "
+        "clickable through to its full provenance chain."
+    ),
+    "full": (
+        "The complete picture in one printable document: portfolio first, "
+        "then tax, holdings, privacy, advisory and provenance detail. Print "
+        "to PDF from your browser for filing or archiving."
+    ),
+}
+
+
+_ENV: jinja2.Environment | None = None
+
+
+def _env() -> jinja2.Environment:
+    """Shared template environment (enables extends/include/macros)."""
+    global _ENV
+    if _ENV is None:
+        _ENV = jinja2.Environment(
+            loader=jinja2.FileSystemLoader(Path(__file__).parent / "templates"),
+            autoescape=True,
+        )
+    return _ENV
+
+
 def _template() -> jinja2.Template:
     text = (Path(__file__).parent / "templates" / "tax_report.html.j2").read_text(encoding="utf-8")
     return jinja2.Environment(autoescape=True).from_string(text)
@@ -119,19 +187,19 @@ def _fmt(v: Decimal) -> str:
     return f"{v:.2f}"
 
 
-def render_report(report: TaxReport, demo_notice: str = "") -> str:
-    """Render the HTML report. Numbers are preformatted (2dp) for the template."""
-    return _template().render(
-        year=report.year,
-        generated_at=report.generated_at,
-        version=report.version,
-        method=report.method,
-        classification=report.classification,
-        classification_label=report.classification.replace("_", " "),
-        rationale=report.rationale,
-        is_speculator=report.classification == "speculator",
-        communal_rate=f"{(report.communal_rate * 100):.2f}%",
-        disposals=[
+def build_tax_context(report: TaxReport) -> dict[str, object]:
+    """Preformatted context dict for the tax section (single page + full report)."""
+    return {
+        "year": report.year,
+        "generated_at": report.generated_at,
+        "version": report.version,
+        "method": report.method,
+        "classification": report.classification,
+        "classification_label": report.classification.replace("_", " "),
+        "rationale": report.rationale,
+        "is_speculator": report.classification == "speculator",
+        "communal_rate": f"{(report.communal_rate * 100):.2f}%",
+        "disposals": [
             {
                 "date": r.date,
                 "btc": f"{r.btc:.8f}",
@@ -143,13 +211,25 @@ def render_report(report: TaxReport, demo_notice: str = "") -> str:
             }
             for r in report.disposals
         ],
-        disposal_count=len(report.disposals),
-        gain_eur=_fmt(report.gain_eur),
-        tax_eur=_fmt(report.tax_eur),
-        communal_eur=_fmt(report.communal_eur),
-        total_eur=_fmt(report.total_eur),
-        disclaimer=DISCLAIMER,
-        demo_notice=demo_notice,
+        "disposal_count": len(report.disposals),
+        "gain_eur": _fmt(report.gain_eur),
+        "tax_eur": _fmt(report.tax_eur),
+        "communal_eur": _fmt(report.communal_eur),
+        "total_eur": _fmt(report.total_eur),
+    }
+
+
+def render_report(report: TaxReport, demo_notice: str = "") -> str:
+    """Render the HTML report. Numbers are preformatted (2dp) for the template."""
+    return (
+        _env()
+        .get_template("tax_report.html.j2")
+        .render(
+            tax=build_tax_context(report),
+            intro=INTROS["tax"],
+            disclaimer=DISCLAIMER,
+            demo_notice=demo_notice,
+        )
     )
 
 
@@ -182,6 +262,25 @@ DESCRIPTORS_DEMO_FINGERPRINT = "73c5da0a"
 
 def write_descriptors_page(out_dir: str | Path, demo_notice: str = "") -> Path:
     """Render the descriptor/address check page into ``out_dir``."""
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    target = out / "descriptors.html"
+    target.write_text(
+        _env()
+        .get_template("descriptors.html.j2")
+        .render(
+            descriptors=build_descriptors_context(),
+            intro=INTROS["descriptors"],
+            disclaimer=DISCLAIMER,
+            demo_notice=demo_notice,
+        ),
+        encoding="utf-8",
+    )
+    return target
+
+
+def build_descriptors_context() -> dict[str, object]:
+    """Context dict for the descriptor section (single source of truth)."""
     from utxoproof.descriptors import build_descriptors, derive_addresses
 
     descriptors = build_descriptors(DESCRIPTORS_DEMO_XPUB, DESCRIPTORS_DEMO_FINGERPRINT, 84, 0, 0)
@@ -195,24 +294,32 @@ def write_descriptors_page(out_dir: str | Path, demo_notice: str = "") -> Path:
             "address": derive_addresses(DESCRIPTORS_DEMO_XPUB, 1, 0, 1)[0],
         }
     )
-    template = jinja2.Environment(autoescape=True).from_string(
-        (Path(__file__).parent / "templates" / "descriptors.html.j2").read_text(encoding="utf-8")
-    )
-    out = Path(out_dir)
-    out.mkdir(parents=True, exist_ok=True)
-    target = out / "descriptors.html"
-    target.write_text(
-        template.render(
-            xpub=DESCRIPTORS_DEMO_XPUB,
-            fingerprint=DESCRIPTORS_DEMO_FINGERPRINT,
-            external=descriptors["external"],
-            change=descriptors["change"],
-            addresses=rows,
-            demo_notice=demo_notice,
-        ),
-        encoding="utf-8",
-    )
-    return target
+    return {
+        "xpub": DESCRIPTORS_DEMO_XPUB,
+        "fingerprint": DESCRIPTORS_DEMO_FINGERPRINT,
+        "external": descriptors["external"],
+        "change": descriptors["change"],
+        "addresses": rows,
+    }
+
+
+def build_status_context(
+    csv_path: str | Path, price_eur: Decimal, price_note: str
+) -> dict[str, object]:
+    """Preformatted context dict for the status section."""
+    from utxoproof.cli import compute_status
+
+    status = compute_status(csv_path, price_eur)
+    return {
+        "as_of": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M UTC"),
+        "price_eur": f"{price_eur:.2f}",
+        "price_note": price_note,
+        "btc": f"{status['btc']:.8f}",
+        "cost_eur": f"{status['cost_eur']:.2f}",
+        "avg_cost_eur": f"{status['avg_cost_eur']:.2f}",
+        "value_eur": f"{status['value_eur']:.2f}",
+        "unrealized_eur": f"{status['unrealized_eur']:.2f}",
+    }
 
 
 def write_status_page(
@@ -223,25 +330,15 @@ def write_status_page(
     demo_notice: str = "",
 ) -> Path:
     """Render the holdings status page into ``out_dir``."""
-    from utxoproof.cli import compute_status
-
-    status = compute_status(csv_path, price_eur)
-    template = jinja2.Environment(autoescape=True).from_string(
-        (Path(__file__).parent / "templates" / "status.html.j2").read_text(encoding="utf-8")
-    )
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     target = out / "status.html"
     target.write_text(
-        template.render(
-            as_of=datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M UTC"),
-            price_eur=f"{price_eur:.2f}",
-            price_note=price_note,
-            btc=f"{status['btc']:.8f}",
-            cost_eur=f"{status['cost_eur']:.2f}",
-            avg_cost_eur=f"{status['avg_cost_eur']:.2f}",
-            value_eur=f"{status['value_eur']:.2f}",
-            unrealized_eur=f"{status['unrealized_eur']:.2f}",
+        _env()
+        .get_template("status.html.j2")
+        .render(
+            status=build_status_context(csv_path, price_eur, price_note),
+            intro=INTROS["status"],
             disclaimer=DISCLAIMER,
             demo_notice=demo_notice,
         ),
@@ -250,44 +347,83 @@ def write_status_page(
     return target
 
 
-def write_privacy_page(db: sqlite3.Connection, out_dir: str | Path, demo_notice: str = "") -> Path:
-    """Run KYC seeding + propagation, then render the privacy page."""
+def build_privacy_context(db: sqlite3.Connection) -> dict[str, object]:
+    """Preformatted context dict for the privacy section (seeds + propagates)."""
     from utxoproof.kyc import detect_mixing_events, kyc_summary, propagate_graph, seed_source_kyc
 
     seed_source_kyc(db)
     propagate_graph(db)
     summary = kyc_summary(db)
     events = detect_mixing_events(db)
-    template = jinja2.Environment(autoescape=True).from_string(
-        (Path(__file__).parent / "templates" / "privacy.html.j2").read_text(encoding="utf-8")
-    )
+    return {
+        "generated_at": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M UTC"),
+        "version": __version__,
+        "summary": [
+            {"status": s, "count": summary[s]} for s in ("kyc", "non_kyc", "mixed", "unknown")
+        ],
+        "events": [
+            {
+                "txid": str(e["txid"]),
+                "inputs": e["inputs"],
+                "kyc_inputs": e["kyc_inputs"],
+                "non_kyc_inputs": e["non_kyc_inputs"],
+                "value_sat": e["value_sat"],
+                "originating": e["originating"],
+            }
+            for e in events
+        ],
+    }
+
+
+def write_privacy_page(db: sqlite3.Connection, out_dir: str | Path, demo_notice: str = "") -> Path:
+    """Run KYC seeding + propagation, then render the privacy page."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     target = out / "privacy.html"
     target.write_text(
-        template.render(
-            generated_at=datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M UTC"),
-            version=__version__,
-            summary=[
-                {"status": s, "count": summary[s]} for s in ("kyc", "non_kyc", "mixed", "unknown")
-            ],
-            events=[
-                {
-                    "txid": str(e["txid"]),
-                    "inputs": e["inputs"],
-                    "kyc_inputs": e["kyc_inputs"],
-                    "non_kyc_inputs": e["non_kyc_inputs"],
-                    "value_sat": e["value_sat"],
-                    "originating": e["originating"],
-                }
-                for e in events
-            ],
+        _env()
+        .get_template("privacy.html.j2")
+        .render(
+            privacy=build_privacy_context(db),
+            intro=INTROS["privacy"],
             disclaimer=DISCLAIMER,
             demo_notice=demo_notice,
         ),
         encoding="utf-8",
     )
     return target
+
+
+def build_advisory_context(
+    advisories: list[UTXOAdvisory],
+    current_price_eur: Decimal,
+    price_note: str,
+    as_of: str,
+) -> dict[str, object]:
+    """Preformatted context dict for the advisory section."""
+    summary = portfolio_summary(advisories)
+    return {
+        "as_of": as_of,
+        "current_price_eur": f"{current_price_eur:.2f}",
+        "price_note": price_note,
+        "advisories": [
+            {
+                "utxo": f"{a.txid}:{a.vout}",
+                "btc": f"{a.amount_btc:.8f}",
+                "holding_days": a.holding_days,
+                "cost_eur": f"{a.acquisition_cost_eur:.2f}",
+                "value_eur": f"{a.current_value_eur:.2f}",
+                "gain_eur": f"{a.unrealized_gain_eur:.2f}",
+                "tax_eur": f"{a.tax_if_sold_eur:.2f}",
+                "kyc": a.kyc_status,
+                "flags": ",".join(sorted(f.value for f in a.flags)),
+            }
+            for a in advisories
+        ],
+        "total_tax_eur": f"{summary['total_tax_eur']:.2f}",
+        "estate_value_eur": f"{summary['estate_value_eur']:.2f}",
+        "borrow_value_eur": f"{summary['borrow_value_eur']:.2f}",
+    }
 
 
 def write_advisory_page(
@@ -299,35 +435,15 @@ def write_advisory_page(
     demo_notice: str = "",
 ) -> Path:
     """Render the per-UTXO advisory table into ``out_dir``."""
-    summary = portfolio_summary(advisories)
-    template = jinja2.Environment(autoescape=True).from_string(
-        (Path(__file__).parent / "templates" / "advisory.html.j2").read_text(encoding="utf-8")
-    )
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     target = out / "advisory.html"
     target.write_text(
-        template.render(
-            as_of=as_of,
-            current_price_eur=f"{current_price_eur:.2f}",
-            price_note=price_note,
-            advisories=[
-                {
-                    "utxo": f"{a.txid}:{a.vout}",
-                    "btc": f"{a.amount_btc:.8f}",
-                    "holding_days": a.holding_days,
-                    "cost_eur": f"{a.acquisition_cost_eur:.2f}",
-                    "value_eur": f"{a.current_value_eur:.2f}",
-                    "gain_eur": f"{a.unrealized_gain_eur:.2f}",
-                    "tax_eur": f"{a.tax_if_sold_eur:.2f}",
-                    "kyc": a.kyc_status,
-                    "flags": ",".join(sorted(f.value for f in a.flags)),
-                }
-                for a in advisories
-            ],
-            total_tax_eur=f"{summary['total_tax_eur']:.2f}",
-            estate_value_eur=f"{summary['estate_value_eur']:.2f}",
-            borrow_value_eur=f"{summary['borrow_value_eur']:.2f}",
+        _env()
+        .get_template("advisory.html.j2")
+        .render(
+            advisory=build_advisory_context(advisories, current_price_eur, price_note, as_of),
+            intro=INTROS["advisory"],
             disclaimer=DISCLAIMER,
             demo_notice=demo_notice,
         ),
@@ -336,20 +452,18 @@ def write_advisory_page(
     return target
 
 
-def write_provenance_page(
+def build_provenance_context(
     db: sqlite3.Connection,
     txid: str,
     vout: int,
     price_at: Callable[[datetime.date], Decimal],
     current_price_eur: Decimal,
     as_of: datetime.date,
-    out_dir: str | Path,
     max_depth: int = 100,
-    demo_notice: str = "",
     evidence_root: str | Path | None = None,
     evidence_url_prefix: str = "",
-) -> Path:
-    """Render the chain-of-custody page for ``txid:vout`` into ``out_dir``."""
+) -> dict[str, object]:
+    """Preformatted context dict for the provenance section."""
     from utxoproof.advisory import analyze_utxo
     from utxoproof.kyc import propagate_graph, seed_source_kyc
     from utxoproof.provenance import build_provenance_chain, db_get_output
@@ -388,43 +502,72 @@ def write_provenance_page(
                         "kyc": row["kyc_status"],
                     }
                 )
-    template = jinja2.Environment(autoescape=True).from_string(
-        (Path(__file__).parent / "templates" / "provenance.html.j2").read_text(encoding="utf-8")
-    )
+    return {
+        "txid": txid,
+        "vout": vout,
+        "amount_btc": f"{selected.amount_btc:.8f}",
+        "current_value_eur": f"{current_value:.2f}",
+        "current_price_eur": f"{current_price_eur:.2f}",
+        "kyc_status": selected.kyc_status,
+        "kyc_fraction": f"{selected.kyc_fraction:.0%}",
+        "days_held": days_held,
+        "flags": ",".join(sorted(f.value for f in advisory.flags)),
+        "steps": [
+            {
+                "n": s.step_number,
+                "date": s.block_time.date().isoformat(),
+                "block": s.block_height if s.block_height is not None else "—",
+                "event": s.event_description,
+                "btc": f"{s.amount_btc:.8f}",
+                "eur_price": f"{s.eur_price:.2f}",
+                "eur_value": f"{s.eur_value:.2f}",
+                "kyc": s.kyc_status,
+                "evidence": s.source_evidence or s.txid,
+                "mixing": s.mixing_event,
+            }
+            for s in steps
+        ],
+        "branches": branches,
+        "evidence": sorted({s.source_evidence for s in steps if s.source_evidence}),
+        "attachments": _attachment_rows(
+            db, [s.txid for s in steps], evidence_root, evidence_url_prefix
+        ),
+    }
+
+
+def write_provenance_page(
+    db: sqlite3.Connection,
+    txid: str,
+    vout: int,
+    price_at: Callable[[datetime.date], Decimal],
+    current_price_eur: Decimal,
+    as_of: datetime.date,
+    out_dir: str | Path,
+    max_depth: int = 100,
+    demo_notice: str = "",
+    evidence_root: str | Path | None = None,
+    evidence_url_prefix: str = "",
+) -> Path:
+    """Render the chain-of-custody page for ``txid:vout`` into ``out_dir``."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     target = out / f"provenance_{txid}_{vout}.html"
     target.write_text(
-        template.render(
-            txid=txid,
-            vout=vout,
-            amount_btc=f"{selected.amount_btc:.8f}",
-            current_value_eur=f"{current_value:.2f}",
-            current_price_eur=f"{current_price_eur:.2f}",
-            kyc_status=selected.kyc_status,
-            kyc_fraction=f"{selected.kyc_fraction:.0%}",
-            days_held=days_held,
-            flags=",".join(sorted(f.value for f in advisory.flags)),
-            steps=[
-                {
-                    "n": s.step_number,
-                    "date": s.block_time.date().isoformat(),
-                    "block": s.block_height if s.block_height is not None else "—",
-                    "event": s.event_description,
-                    "btc": f"{s.amount_btc:.8f}",
-                    "eur_price": f"{s.eur_price:.2f}",
-                    "eur_value": f"{s.eur_value:.2f}",
-                    "kyc": s.kyc_status,
-                    "evidence": s.source_evidence or s.txid,
-                    "mixing": s.mixing_event,
-                }
-                for s in steps
-            ],
-            branches=branches,
-            evidence=sorted({s.source_evidence for s in steps if s.source_evidence}),
-            attachments=_attachment_rows(
-                db, [s.txid for s in steps], evidence_root, evidence_url_prefix
+        _env()
+        .get_template("provenance.html.j2")
+        .render(
+            provenance=build_provenance_context(
+                db,
+                txid,
+                vout,
+                price_at,
+                current_price_eur,
+                as_of,
+                max_depth,
+                evidence_root,
+                evidence_url_prefix,
             ),
+            intro=INTROS["provenance"],
             disclaimer=DISCLAIMER,
             demo_notice=demo_notice,
         ),
@@ -458,35 +601,42 @@ def _attachment_rows(
     return rows
 
 
-def write_alltime_page(csv_path: str | Path, out_dir: str | Path, demo_notice: str = "") -> Path:
-    """Render the all-time realized-gains summary into ``out_dir``."""
+def build_alltime_context(csv_path: str | Path) -> dict[str, object]:
+    """Preformatted context dict for the all-time section."""
     from utxoproof.cli import compute_alltime
 
     result = compute_alltime(csv_path)
     per_year = result["per_year"]
     inventory = result["inventory"]
     total = sum((row["gain_eur"] for row in per_year), Decimal("0"))
-    template = jinja2.Environment(autoescape=True).from_string(
-        (Path(__file__).parent / "templates" / "alltime.html.j2").read_text(encoding="utf-8")
-    )
+    return {
+        "generated_at": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M UTC"),
+        "version": __version__,
+        "years": [
+            {
+                "year": row["year"],
+                "disposals": row["disposals"],
+                "gain": f"{row['gain_eur']:.2f}",
+            }
+            for row in per_year
+        ],
+        "total_gain": f"{total:.2f}",
+        "inventory_btc": f"{inventory['btc']:.8f}",
+        "inventory_cost": f"{inventory['cost_eur']:.2f}",
+    }
+
+
+def write_alltime_page(csv_path: str | Path, out_dir: str | Path, demo_notice: str = "") -> Path:
+    """Render the all-time realized-gains summary into ``out_dir``."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     target = out / "summary.html"
     target.write_text(
-        template.render(
-            generated_at=datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M UTC"),
-            version=__version__,
-            years=[
-                {
-                    "year": row["year"],
-                    "disposals": row["disposals"],
-                    "gain": f"{row['gain_eur']:.2f}",
-                }
-                for row in per_year
-            ],
-            total_gain=f"{total:.2f}",
-            inventory_btc=f"{inventory['btc']:.8f}",
-            inventory_cost=f"{inventory['cost_eur']:.2f}",
+        _env()
+        .get_template("alltime.html.j2")
+        .render(
+            alltime=build_alltime_context(csv_path),
+            intro=INTROS["alltime"],
             disclaimer=DISCLAIMER,
             demo_notice=demo_notice,
         ),
@@ -507,6 +657,55 @@ def _bar_color(portfolio: Portfolio, entity_id: str) -> str:
     return Portfolio.STATUS_COLORS.get(dominant, "#8e5bd6")
 
 
+def build_overview_context(
+    portfolio: Portfolio,
+    as_of: str,
+    price_note: str,
+    price_history_svg: str = "",
+) -> dict[str, object]:
+    """Preformatted context dict for the overview section."""
+    from utxoproof.portfolio import donut_legend, donut_ring, svg_bars
+
+    return {
+        "as_of": as_of,
+        "current_price_eur": f"{portfolio.current_price_eur:.2f}",
+        "price_note": price_note,
+        "net_worth_eur": f"{portfolio.net_worth_eur:,.2f}",
+        "btc_total": f"{portfolio.btc_total:.8f}",
+        "btc_value_eur": f"{portfolio.btc_value_eur:,.2f}",
+        "fiat_total_eur": f"{portfolio.fiat_total_eur:,.2f}",
+        "cost_basis_eur": f"{portfolio.cost_basis_eur:,.2f}",
+        "unrealized_eur": f"{portfolio.unrealized_eur:,.2f}",
+        "allocation_bars": svg_bars(
+            [
+                (f"{label} ({share:.0f}%)", value, f"../entities/{eid}.html")
+                for eid, label, value, share in portfolio.allocation()
+            ],
+            colors={
+                label: _bar_color(portfolio, eid) for eid, label, _, _ in portfolio.allocation()
+            },
+        ),
+        "kyc_donut": donut_ring(portfolio.kyc_split()),
+        "kyc_legend": [
+            {"color": color, "label": label, "value": f"{value:,.0f}"}
+            for color, label, value in donut_legend(portfolio.kyc_split())
+        ],
+        "price_history_svg": price_history_svg,
+        "entities": [
+            {
+                "href": f"../entities/{eid}.html",
+                "label": label,
+                "kind": next(e.kind for e in portfolio.entities if e.id == eid),
+                "utxos": sum(1 for u in portfolio.utxos if u.entity_id == eid),
+                "btc": f"{_entity_btc(portfolio, eid):.8f}",
+                "value": f"{value:,.2f}",
+                "share": f"{share:.1f}%",
+            }
+            for eid, label, value, share in portfolio.allocation()
+        ],
+    }
+
+
 def write_overview_page(
     portfolio: Portfolio,
     as_of: str,
@@ -516,58 +715,58 @@ def write_overview_page(
     demo_notice: str = "",
 ) -> Path:
     """Render the portfolio dashboard into ``out_dir``."""
-    from utxoproof.portfolio import donut_legend, donut_ring, svg_bars
-
-    template = jinja2.Environment(autoescape=True).from_string(
-        (Path(__file__).parent / "templates" / "overview.html.j2").read_text(encoding="utf-8")
-    )
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     target = out / "overview.html"
     target.write_text(
-        template.render(
-            as_of=as_of,
-            current_price_eur=f"{portfolio.current_price_eur:.2f}",
-            price_note=price_note,
-            net_worth_eur=f"{portfolio.net_worth_eur:,.2f}",
-            btc_total=f"{portfolio.btc_total:.8f}",
-            btc_value_eur=f"{portfolio.btc_value_eur:,.2f}",
-            fiat_total_eur=f"{portfolio.fiat_total_eur:,.2f}",
-            cost_basis_eur=f"{portfolio.cost_basis_eur:,.2f}",
-            unrealized_eur=f"{portfolio.unrealized_eur:,.2f}",
-            allocation_bars=svg_bars(
-                [
-                    (f"{label} ({share:.0f}%)", value, f"../entities/{eid}.html")
-                    for eid, label, value, share in portfolio.allocation()
-                ],
-                colors={
-                    label: _bar_color(portfolio, eid) for eid, label, _, _ in portfolio.allocation()
-                },
-            ),
-            kyc_donut=donut_ring(portfolio.kyc_split()),
-            kyc_legend=[
-                {"color": color, "label": label, "value": f"{value:,.0f}"}
-                for color, label, value in donut_legend(portfolio.kyc_split())
-            ],
-            price_history_svg=price_history_svg,
-            entities=[
-                {
-                    "href": f"../entities/{eid}.html",
-                    "label": label,
-                    "kind": next(e.kind for e in portfolio.entities if e.id == eid),
-                    "utxos": sum(1 for u in portfolio.utxos if u.entity_id == eid),
-                    "btc": f"{_entity_btc(portfolio, eid):.8f}",
-                    "value": f"{value:,.2f}",
-                    "share": f"{share:.1f}%",
-                }
-                for eid, label, value, share in portfolio.allocation()
-            ],
+        _env()
+        .get_template("overview.html.j2")
+        .render(
+            overview=build_overview_context(portfolio, as_of, price_note, price_history_svg),
+            intro=INTROS["overview"],
             disclaimer=DISCLAIMER,
             demo_notice=demo_notice,
         ),
         encoding="utf-8",
     )
     return target
+
+
+def build_entity_context(
+    portfolio: Portfolio,
+    entity_id: str,
+    provenance_rel: str,
+    flags_by_utxo: dict[str, str] | None = None,
+    back_href: str = "../overview/overview.html",
+) -> dict[str, object]:
+    """Preformatted context dict for one entity section."""
+    from utxoproof.portfolio import svg_bars
+
+    entity = next(e for e in portfolio.entities if e.id == entity_id)
+    utxos = [u for u in portfolio.utxos if u.entity_id == entity.id]
+    fiat_rows = [f for f in portfolio.fiat if f.entity_id == entity.id]
+    return {
+        "label": entity.label,
+        "back_href": back_href,
+        "kind": entity.kind,
+        "detail": entity.detail,
+        "total_eur": f"{portfolio.entity_value_eur(entity.id):,.2f}",
+        "utxos": [
+            {
+                "id": f"{u.txid}:{u.vout}",
+                "href": f"{provenance_rel}/provenance_{u.txid}_{u.vout}.html",
+                "btc": f"{u.btc:.8f}",
+                "value": f"{u.eur_value:,.2f}",
+                "kyc": u.kyc_status,
+                "flags": (flags_by_utxo or {}).get(f"{u.txid}:{u.vout}", ""),
+            }
+            for u in utxos
+        ],
+        "fiat_rows": [{"note": f.note, "amount": f"{f.amount_eur:,.2f}"} for f in fiat_rows],
+        "utxo_bars": svg_bars([(f"{u.txid}:{u.vout}", u.eur_value, "") for u in utxos])
+        if utxos
+        else "",
+    }
 
 
 def write_entity_pages(
@@ -578,39 +777,17 @@ def write_entity_pages(
     demo_notice: str = "",
 ) -> list[Path]:
     """Render one page per entity into ``out_dir``. Returns page paths."""
-    from utxoproof.portfolio import svg_bars
-
-    template = jinja2.Environment(autoescape=True).from_string(
-        (Path(__file__).parent / "templates" / "entity.html.j2").read_text(encoding="utf-8")
-    )
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     targets = []
     for entity in portfolio.entities:
-        utxos = [u for u in portfolio.utxos if u.entity_id == entity.id]
-        fiat_rows = [f for f in portfolio.fiat if f.entity_id == entity.id]
         target = out / f"{entity.id}.html"
         target.write_text(
-            template.render(
-                label=entity.label,
-                kind=entity.kind,
-                detail=entity.detail,
-                total_eur=f"{portfolio.entity_value_eur(entity.id):,.2f}",
-                utxos=[
-                    {
-                        "id": f"{u.txid}:{u.vout}",
-                        "href": f"{provenance_rel}/provenance_{u.txid}_{u.vout}.html",
-                        "btc": f"{u.btc:.8f}",
-                        "value": f"{u.eur_value:,.2f}",
-                        "kyc": u.kyc_status,
-                        "flags": (flags_by_utxo or {}).get(f"{u.txid}:{u.vout}", ""),
-                    }
-                    for u in utxos
-                ],
-                fiat_rows=[{"note": f.note, "amount": f"{f.amount_eur:,.2f}"} for f in fiat_rows],
-                utxo_bars=svg_bars([(f"{u.txid}:{u.vout}", u.eur_value, "") for u in utxos])
-                if utxos
-                else "",
+            _env()
+            .get_template("entity.html.j2")
+            .render(
+                entity=build_entity_context(portfolio, entity.id, provenance_rel, flags_by_utxo),
+                intro=INTROS["entity"],
                 disclaimer=DISCLAIMER,
                 demo_notice=demo_notice,
             ),
@@ -618,3 +795,95 @@ def write_entity_pages(
         )
         targets.append(target)
     return targets
+
+
+def write_full_report(
+    *,
+    db: sqlite3.Connection,
+    csv_path: str | Path,
+    year: int,
+    out_dir: str | Path,
+    price_at: Callable[[datetime.date], Decimal],
+    current_price_eur: Decimal,
+    price_note: str,
+    as_of: datetime.date,
+    communal_rate: Decimal = COMMUNAL_SURCHARGE_DEFAULT,
+    classifier_cfg: ClassifierConfig | None = None,
+    provenance_targets: list[tuple[str, int]] | None = None,
+    portfolio: Portfolio | None = None,
+    price_history_svg: str = "",
+    max_depth: int = 100,
+    demo_notice: str = "",
+    evidence_root: str | Path | None = None,
+    evidence_url_prefix: str = "",
+) -> Path:
+    """Compose every section into one printable ``fullreport.html``."""
+    from utxoproof.advisory import analyze_wallet
+
+    report = build_report(csv_path, year, communal_rate, classifier_cfg)
+    advisories = analyze_wallet(db, price_at, current_price_eur, as_of)
+    sections: list[dict[str, str]] = [
+        {"id": "tax", "title": "Tax report"},
+        {"id": "status", "title": "Holdings status"},
+        {"id": "alltime", "title": "All-time summary"},
+        {"id": "privacy", "title": "Privacy report"},
+        {"id": "advisory", "title": "Advisory"},
+    ]
+    provenance_sections = []
+    for txid, vout in provenance_targets or []:
+        provenance_sections.append(
+            build_provenance_context(
+                db,
+                txid,
+                vout,
+                price_at,
+                current_price_eur,
+                as_of,
+                max_depth,
+                evidence_root,
+                evidence_url_prefix,
+            )
+        )
+        sections.append({"id": f"provenance-{txid}-{vout}", "title": f"Provenance {txid}:{vout}"})
+    sections.append({"id": "descriptors", "title": "Descriptor check"})
+    overview_ctx = (
+        build_overview_context(portfolio, as_of.isoformat(), price_note, price_history_svg)
+        if portfolio is not None
+        else None
+    )
+    if overview_ctx is not None:
+        sections.insert(0, {"id": "overview", "title": "Portfolio overview"})
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    target = out / "fullreport.html"
+    target.write_text(
+        _env()
+        .get_template("full_report.html.j2")
+        .render(
+            title=f"utxoproof full report {year}",
+            intro=INTROS["full"],
+            sections=sections,
+            tax=build_tax_context(report),
+            tax_intro=INTROS["tax"],
+            status=build_status_context(csv_path, current_price_eur, price_note),
+            status_intro=INTROS["status"],
+            alltime=build_alltime_context(csv_path),
+            alltime_intro=INTROS["alltime"],
+            privacy=build_privacy_context(db),
+            privacy_intro=INTROS["privacy"],
+            advisory=build_advisory_context(
+                advisories, current_price_eur, price_note, as_of.isoformat()
+            ),
+            advisory_intro=INTROS["advisory"],
+            provenances=provenance_sections,
+            provenance_intro=INTROS["provenance"],
+            descriptors=build_descriptors_context(),
+            descriptors_intro=INTROS["descriptors"],
+            overview=overview_ctx,
+            overview_intro=INTROS["overview"],
+            disclaimer=DISCLAIMER,
+            demo_notice=demo_notice,
+        ),
+        encoding="utf-8",
+    )
+    return target

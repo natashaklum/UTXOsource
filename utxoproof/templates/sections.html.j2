@@ -1,0 +1,252 @@
+{# Shared report sections. Each macro renders one report's body from the same
+   context dict its single-page writer builds — one markup, used standalone
+   and inside the full report. #}
+
+{% macro intro_block(title, intro) %}
+<h2>{{ title }}</h2>
+<div class="report-intro">{{ intro }}</div>
+{% endmacro %}
+
+{% macro tax_section(t, intro) %}
+{{ intro_block("Tax report " ~ t.year, intro) }}
+<p>Generated {{ t.generated_at }} by utxoproof {{ t.version }}.
+Cost basis method: {{ t.method }}. Classification: {{ t.classification_label }}.
+Communal surcharge rate: {{ t.communal_rate }}.</p>
+
+<h3>Classification</h3>
+<pre class="rationale">{{ t.rationale }}</pre>
+{% if t.is_speculator %}
+<p><strong>Note:</strong> speculator gains fall under progressive rates, not the
+33% flat figure shown above. Have an accountant compute the exact liability.</p>
+{% endif %}
+
+<h3>Annual summary</h3>
+<table class="summary">
+  <tr><th>Item</th><th>EUR</th></tr>
+  <tr><td>Realised gain/loss ({{ t.disposal_count }} disposals)</td><td>{{ t.gain_eur }}</td></tr>
+  <tr><td>Tax ({{ t.classification_label }})</td><td>{{ t.tax_eur }}</td></tr>
+  <tr><td>Communal surcharge</td><td>{{ t.communal_eur }}</td></tr>
+  <tr><td>Total due</td><td>{{ t.total_eur }}</td></tr>
+</table>
+
+<h3>Disposals</h3>
+<table>
+  <tr><th>Date</th><th>BTC</th><th>Price (EUR/BTC)</th><th>Proceeds (EUR)</th><th>Cost basis (EUR)</th><th>Gain (EUR)</th><th>Tax (EUR)</th></tr>
+  {% for d in t.disposals %}
+  <tr><td>{{ d.date }}</td><td>{{ d.btc }}</td><td>{{ d.eur_per_btc }}</td><td>{{ d.proceeds_eur }}</td><td>{{ d.cost_basis_eur }}</td><td>{{ d.gain_eur }}</td><td>{{ d.tax_eur }}</td></tr>
+  {% endfor %}
+</table>
+{% endmacro %}
+
+{% macro status_section(s, intro) %}
+{{ intro_block("Holdings status", intro) }}
+<p>As of {{ s.as_of }} at {{ s.price_eur }} EUR/BTC ({{ s.price_note }}).
+Cost basis method: moving_average.</p>
+
+<table>
+  <tr><th>Item</th><th>Value</th></tr>
+  <tr><td>Holdings (BTC)</td><td>{{ s.btc }}</td></tr>
+  <tr><td>Cost basis (EUR)</td><td>{{ s.cost_eur }}</td></tr>
+  <tr><td>Average cost (EUR/BTC)</td><td>{{ s.avg_cost_eur }}</td></tr>
+  <tr><td>Current value (EUR)</td><td>{{ s.value_eur }}</td></tr>
+  <tr><td>Unrealized gain/loss (EUR)</td><td>{{ s.unrealized_eur }}</td></tr>
+</table>
+{% endmacro %}
+
+{% macro privacy_section(p, intro) %}
+{{ intro_block("Privacy report", intro) }}
+<p>Generated {{ p.generated_at }} by utxoproof {{ p.version }}.
+Unspent outputs by KYC status; mixing events highlighted (amber = originating).</p>
+
+<h3>KYC summary (unspent)</h3>
+<table>
+  <tr><th>Status</th><th>UTXOs</th></tr>
+  {% for row in p.summary %}
+  <tr><td>{{ row.status }}</td><td>{{ row.count }}</td></tr>
+  {% endfor %}
+</table>
+
+<h3>Mixing events</h3>
+<table>
+  <tr><th>Txid</th><th>Inputs</th><th>KYC in</th><th>Non-KYC in</th><th>Value (sat)</th><th>Originating</th></tr>
+  {% for e in p.events %}
+  <tr{% if e.originating %} class="mixing-origin"{% endif %}><td>{{ e.txid }}</td><td>{{ e.inputs }}</td><td>{{ e.kyc_inputs }}</td><td>{{ e.non_kyc_inputs }}</td><td>{{ e.value_sat }}</td><td>{{ e.originating }}</td></tr>
+  {% endfor %}
+</table>
+{% endmacro %}
+
+{% macro advisory_section(a, intro) %}
+{{ intro_block("Advisory", intro) }}
+<p>As of {{ a.as_of }} at {{ a.current_price_eur }} EUR/BTC ({{ a.price_note }}).
+Ranked by tax cost if sold. Selling everything today would cost
+{{ a.total_tax_eur }} EUR in tax.</p>
+
+<h3>Per-UTXO table</h3>
+<table>
+  <tr><th>UTXO</th><th>BTC</th><th>Holding (days)</th><th>Cost (EUR)</th><th>Value (EUR)</th><th>Gain (EUR)</th><th>Tax if sold (EUR)</th><th>KYC</th><th>Flags</th></tr>
+  {% for u in a.advisories %}
+  <tr><td>{{ u.utxo }}</td><td>{{ u.btc }}</td><td>{{ u.holding_days }}</td><td>{{ u.cost_eur }}</td><td>{{ u.value_eur }}</td><td>{{ u.gain_eur }}</td><td>{{ u.tax_eur }}</td><td>{{ u.kyc }}</td><td>{{ u.flags }}</td></tr>
+  {% endfor %}
+</table>
+
+<h3>Summary</h3>
+<table>
+  <tr><th>Item</th><th>EUR</th></tr>
+  <tr><td>Total tax cost of liquidating</td><td>{{ a.total_tax_eur }}</td></tr>
+  <tr><td>Estate-candidate value</td><td>{{ a.estate_value_eur }}</td></tr>
+  <tr><td>Borrow-candidate value</td><td>{{ a.borrow_value_eur }}</td></tr>
+</table>
+{% endmacro %}
+
+{% macro provenance_section(p, intro) %}
+{{ intro_block("Provenance " ~ p.txid ~ ":" ~ p.vout, intro) }}
+<p>Current amount: {{ p.amount_btc }} BTC ({{ p.current_value_eur }} EUR at {{ p.current_price_eur }}/BTC).
+KYC status: {{ p.kyc_status }} ({{ p.kyc_fraction }}).
+Days held since earliest traced acquisition: {{ p.days_held }}.
+Advisory flags: {{ p.flags }}.</p>
+
+<h3>Provenance chain (oldest first)</h3>
+<table>
+  <tr><th>Step</th><th>Date</th><th>Block</th><th>Event</th><th>BTC</th><th>EUR/BTC</th><th>Value (EUR)</th><th>KYC</th><th>Evidence</th></tr>
+  {% for s in p.steps %}
+  <tr{% if s.mixing %} class="mixing"{% endif %}><td>{{ s.n }}</td><td>{{ s.date }}</td><td>{{ s.block }}</td><td>{{ s.event }}</td><td>{{ s.btc }}</td><td>{{ s.eur_price }}</td><td>{{ s.eur_value }}</td><td>{{ s.kyc }}</td><td>{{ s.evidence }}</td></tr>
+  {% endfor %}
+</table>
+
+<h3>Branch detail (consolidations)</h3>
+<table>
+  <tr><th>Step</th><th>Parent UTXO</th><th>BTC</th><th>KYC</th></tr>
+  {% for b in p.branches %}
+  <tr><td>{{ b.step }}</td><td><code>{{ b.utxo }}</code></td><td>{{ b.btc }}</td><td>{{ b.kyc }}</td></tr>
+  {% endfor %}
+</table>
+
+<h3>Evidence references</h3>
+<ul>
+  {% for e in p.evidence %}
+  <li><code>{{ e }}</code></li>
+  {% endfor %}
+</ul>
+
+<h3>Attachments</h3>
+{% if p.attachments %}
+<table>
+  <tr><th>File</th><th>Transaction</th><th>Note</th><th>Preview</th></tr>
+  {% for a in p.attachments %}
+  <tr><td>{% if a.href %}<a href="{{ a.href }}"><code>{{ a.filename }}</code></a>{% else %}<code>{{ a.filename }}</code>{% endif %}</td><td><code>{{ a.txid }}</code></td><td>{{ a.note }}</td><td>{% if a.thumbnail %}<img src="{{ a.thumbnail }}" alt="{{ a.filename }}" style="max-width:320px;">{% else %}—{% endif %}</td></tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No attachments registered for this chain. Add scans or confirmations with <code>utxoproof attach --file … --tx …</code>.</p>
+{% endif %}
+{% endmacro %}
+
+{% macro descriptors_section(d, intro) %}
+{{ intro_block("Descriptor check", intro) }}
+<p>Addresses below are derived live by <code>utxoproof.descriptors</code> from the
+BIP84 spec-vector account xpub (<code>{{ d.xpub }}</code>, fingerprint
+<code>{{ d.fingerprint }}</code>). They must match the BIP84 vectors exactly.</p>
+
+<h3>Descriptors (Bitcoin Core import)</h3>
+<table>
+  <tr><th>Chain</th><th>Descriptor</th></tr>
+  <tr><td>external</td><td><code>{{ d.external }}</code></td></tr>
+  <tr><td>change</td><td><code>{{ d.change }}</code></td></tr>
+</table>
+
+<h3>First addresses (mainnet)</h3>
+<table>
+  <tr><th>Path</th><th>Address</th></tr>
+  {% for row in d.addresses %}
+  <tr><td>{{ row.path }}</td><td><code>{{ row.address }}</code></td></tr>
+  {% endfor %}
+</table>
+{% endmacro %}
+
+{% macro alltime_section(a, intro) %}
+{{ intro_block("All-time summary", intro) }}
+<p>Generated {{ a.generated_at }} by utxoproof {{ a.version }}.
+Realised gains per year plus remaining lot inventory (cost basis only).</p>
+
+<h3>Per-year realised gains</h3>
+<table>
+  <tr><th>Year</th><th>Disposals</th><th>Gain (EUR)</th></tr>
+  {% for row in a.years %}
+  <tr><td>{{ row.year }}</td><td>{{ row.disposals }}</td><td>{{ row.gain }}</td></tr>
+  {% endfor %}
+  <tr><td><strong>Total</strong></td><td></td><td><strong>{{ a.total_gain }}</strong></td></tr>
+</table>
+
+<h3>Remaining inventory</h3>
+<table>
+  <tr><th>BTC</th><th>Cost basis (EUR)</th></tr>
+  <tr><td>{{ a.inventory_btc }}</td><td>{{ a.inventory_cost }}</td></tr>
+</table>
+{% endmacro %}
+
+{% macro overview_section(o, intro) %}
+{{ intro_block("Portfolio overview", intro) }}
+<p>As of {{ o.as_of }} at {{ o.current_price_eur }} EUR/BTC ({{ o.price_note }}).
+Click an entity to drill into its UTXOs, then a UTXO for provenance.</p>
+
+<div class="cards">
+  <div class="card"><div class="big">{{ o.net_worth_eur }}</div><div class="sub">net worth (EUR)</div></div>
+  <div class="card"><div class="big">{{ o.btc_total }}</div><div class="sub">BTC held</div></div>
+  <div class="card"><div class="big">{{ o.btc_value_eur }}</div><div class="sub">BTC value (EUR)</div></div>
+  <div class="card"><div class="big">{{ o.fiat_total_eur }}</div><div class="sub">cash (EUR)</div></div>
+  <div class="card"><div class="big">{{ o.cost_basis_eur }}</div><div class="sub">BTC cost basis (EUR)</div></div>
+  <div class="card"><div class="big">{{ o.unrealized_eur }}</div><div class="sub">unrealized gain (EUR)</div></div>
+</div>
+
+<h3>Allocation</h3>
+<div class="charts">
+  <div>{{ o.allocation_bars | safe }}</div>
+  <div class="donut-block">{{ o.kyc_donut | safe }}
+    <ul class="legend">
+      {% for item in o.kyc_legend %}
+      <li><span class="dot" style="background:{{ item.color }}"></span>{{ item.label }} — {{ item.value }} EUR</li>
+      {% endfor %}
+    </ul>
+    <p class="sub">BTC value by KYC status (EUR)</p>
+  </div>
+</div>
+
+<h3>BTC/EUR daily close, last 12 months</h3>
+<div>{{ o.price_history_svg | safe }}</div>
+<p class="sub">Daily close in EUR/BTC from the vendored history (Kraken native, blockchain.info x ECB before Oct 2024).</p>
+
+<h3>Entities</h3>
+<table>
+  <tr><th>Entity</th><th>Type</th><th>UTXOs</th><th>BTC</th><th>Value (EUR)</th><th>Share</th></tr>
+  {% for e in o.entities %}
+  <tr><td><a href="{{ e.href }}">{{ e.label }}</a></td><td>{{ e.kind }}</td><td>{{ e.utxos }}</td><td>{{ e.btc }}</td><td>{{ e.value }}</td><td>{{ e.share }}</td></tr>
+  {% endfor %}
+</table>
+{% endmacro %}
+
+{% macro entity_section(e, intro) %}
+{{ intro_block(e.label, intro) }}
+<p><a href="{{ e.back_href }}">← portfolio overview</a></p>
+<p>{{ e.kind }} — {{ e.detail }} Total value: {{ e.total_eur }} EUR.</p>
+
+{% if e.utxos %}
+<h3>UTXOs (click for provenance)</h3>
+<table>
+  <tr><th>UTXO</th><th>BTC</th><th>Value (EUR)</th><th>KYC</th><th>Flags</th></tr>
+  {% for u in e.utxos %}
+  <tr><td><a href="{{ u.href }}"><code>{{ u.id }}</code></a></td><td>{{ u.btc }}</td><td>{{ u.value }}</td><td>{{ u.kyc }}</td><td>{{ u.flags }}</td></tr>
+  {% endfor %}
+</table>
+<div>{{ e.utxo_bars | safe }}</div>
+{% endif %}
+
+{% if e.fiat_rows %}
+<h3>Cash positions</h3>
+<table>
+  <tr><th>Note</th><th>Amount (EUR)</th></tr>
+  {% for f in e.fiat_rows %}
+  <tr><td>{{ f.note }}</td><td>{{ f.amount }}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endmacro %}
