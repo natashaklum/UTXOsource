@@ -25,6 +25,7 @@ class ExchangeTx:
     source_type: str = "exchange_purchase"
     source_label: str = ""
     source_evidence: str = ""
+    margin: bool = False
 
     @property
     def fiat_amount(self) -> Decimal:
@@ -33,16 +34,29 @@ class ExchangeTx:
 
 
 def to_manual_csv_rows(txs: list[ExchangeTx]) -> list[dict[str, str]]:
-    """Convert BUY/SELL records to manual-CSV rows consumable by ``compute``."""
+    """Convert trade records to manual-CSV rows consumable by ``compute``.
+
+    BUY/SELL pass through; MARGIN settles like a SELL (taxable disposal);
+    ROLLOVER becomes a zero-BTC BUY carrying just the financing fee into the
+    cost pool. The original ``kind`` is preserved in its own column (compute
+    ignores extra columns) so reports can show margin lines separately.
+    """
     rows = []
     for tx in txs:
-        if tx.kind not in ("BUY", "SELL"):
+        if tx.kind == "MARGIN":
+            side, btc = "SELL", tx.btc
+        elif tx.kind == "ROLLOVER":
+            side, btc = "BUY", Decimal("0")
+        elif tx.kind in ("BUY", "SELL"):
+            side, btc = tx.kind, tx.btc
+        else:
             continue
         rows.append(
             {
                 "date": tx.date.isoformat(),
-                "side": tx.kind,
-                "btc": str(tx.btc),
+                "side": side,
+                "kind": tx.kind,
+                "btc": str(btc),
                 "eur_per_btc": str(tx.eur_per_btc),
                 "fee_eur": str(tx.fee_eur),
             }

@@ -24,7 +24,8 @@ Price history ships vendored (`data/btc_eur_daily.csv` from the first real
 ## Status
 
 Implemented and covered by tests + live regtest runs: exchange imports
-(Kraken, Coinbase, Binance, Bisq) and Belgian bank parsing, EUR price oracle,
+(Kraken ledgers + trades join incl. margin/rollover, Coinbase, Binance, Bisq)
+and Belgian bank parsing, EUR price oracle,
 Belgian classifier with `utxoproof.toml`, HTML reports (tax, status, privacy,
 advisory, provenance, all-time) with evidence ZIPs, KYC propagation, on-chain
 descriptor sync against Bitcoin Core, and demo reports published to GitHub
@@ -91,7 +92,8 @@ utxoproof/
   belgian_tax.py  # 33% flat + communal surcharge, proportional fee-split
   cli.py          # compute/report/status/privacy/advise/provenance/setup/sync
   db.py + schema.sql  # Sec. 8 SQLite schema (tx graph, prices, KYC…)
-  exchange.py + kraken_csv.py / coinbase_csv.py / binance_csv.py / bisq_csv.py
+  exchange.py + kraken_csv.py (ledgers + trades join, margin/rollover)
+    / coinbase_csv.py / binance_csv.py / bisq_csv.py
   banks.py + matching.py  # Belgian bank profiles, fiat-leg matcher
   price_oracle.py  # Kraken OHLC + CoinGecko + ECB, SQLite cache
   classifier.py + config.py  # Sec. 6 scores, utxoproof.toml

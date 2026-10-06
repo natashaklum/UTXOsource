@@ -39,7 +39,11 @@ def test_kraken_report_end_to_end(tmp_path: Path) -> None:
     rows = to_manual_csv_rows(parse_kraken_ledgers(KRAKEN))
     csv_path = tmp_path / "kraken.csv"
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["date", "side", "btc", "eur_per_btc", "fee_eur"])
+        writer = csv.DictWriter(
+            f,
+            fieldnames=["date", "side", "kind", "btc", "eur_per_btc", "fee_eur"],
+            extrasaction="ignore",
+        )
         writer.writeheader()
         writer.writerows(rows)
     report = build_report(csv_path, 2023)

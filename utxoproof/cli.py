@@ -28,6 +28,7 @@ from utxoproof.paths import add_data_dir_arg, db_path, evidence_root
 
 class DisposalDetail(TypedDict):
     date: str
+    kind: str
     btc: Decimal
     eur_per_btc: Decimal
     proceeds_eur: Decimal
@@ -90,6 +91,7 @@ def compute_details(csv_path: str | Path, year: int) -> ComputeResult:
                     disposals.append(
                         {
                             "date": str(row["date"]),
+                            "kind": str(row.get("kind") or side),
                             "btc": btc,
                             "eur_per_btc": price,
                             "proceeds_eur": proceeds,
@@ -214,6 +216,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--out",
         default=None,
         help="Output manual-CSV path (default: stdout)",
+    )
+    impi.add_argument(
+        "--trades",
+        default=None,
+        help="Kraken trades.csv to join (execution prices, margin flags)",
     )
     report = sub.add_parser("report", help="Generate an HTML tax report")
     report.add_argument("--input", required=True, help="Manual CSV path")
@@ -546,12 +553,24 @@ def _run_import(args: argparse.Namespace) -> int:
 
     if args.type in ("kraken", "coinbase", "binance", "bisq"):
         parser = {
-            "kraken": parse_kraken_ledgers,
             "coinbase": parse_coinbase_csv,
             "binance": parse_binance_csv,
             "bisq": parse_bisq_csv,
-        }[args.type]
-        txs = parser(args.file)
+        }.get(args.type)
+        if parser is not None:
+            if args.trades:
+                raise ValueError("--trades only applies to --type kraken")
+            txs = parser(args.file)
+        else:
+            from utxoproof.kraken_csv import detect_margin_activity, parse_kraken_ledgers
+
+            txs = parse_kraken_ledgers(args.file, args.trades)
+            if detect_margin_activity(txs):
+                print(
+                    "note: margin trading detected — set used_leverage=true "
+                    "in utxoproof.toml [classifier]",
+                    file=sys.stderr,
+                )
         if args.kyc != "kyc":
             for tx in txs:
                 tx.kyc_status = args.kyc

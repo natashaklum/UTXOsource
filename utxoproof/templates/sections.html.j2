@@ -31,9 +31,9 @@ Communal surcharge rate: {{ t.communal_rate }}.</p>
 
 <h3>Disposals</h3>
 <table>
-  <tr><th>Date</th><th>BTC</th><th>Price (EUR/BTC)</th><th>Proceeds (EUR)</th><th>Cost basis (EUR)</th><th>Gain (EUR)</th><th>Tax (EUR)</th></tr>
+  <tr><th>Date</th><th>Type</th><th>BTC</th><th>Price (EUR/BTC)</th><th>Proceeds (EUR)</th><th>Cost basis (EUR)</th><th>Gain (EUR)</th><th>Tax (EUR)</th></tr>
   {% for d in t.disposals %}
-  <tr><td>{{ d.date }}</td><td>{{ d.btc }}</td><td>{{ d.eur_per_btc }}</td><td>{{ d.proceeds_eur }}</td><td>{{ d.cost_basis_eur }}</td><td>{{ d.gain_eur }}</td><td>{{ d.tax_eur }}</td></tr>
+  <tr><td>{{ d.date }}</td><td>{{ d.kind }}</td><td>{{ d.btc }}</td><td>{{ d.eur_per_btc }}</td><td>{{ d.proceeds_eur }}</td><td>{{ d.cost_basis_eur }}</td><td>{{ d.gain_eur }}</td><td>{{ d.tax_eur }}</td></tr>
   {% endfor %}
 </table>
 {% endmacro %}

@@ -5,11 +5,13 @@ transactions. Shaped like a DaLI plugin's output (In/Out-style records with KYC
 metadata) so it can back a real DaLI plugin later; Sprint 1 consumes it directly
 because DaLI is not installable here yet (needs a C toolchain).
 
-Expected columns (Kraken export header):
-``txid,refid,time,type,subtype,aclass,asset,amount,fee,balance`` with asset
-codes like ``XXBT``/``ZEUR``. A trade is a refid group with an XBT leg and a
-fiat leg; deposits/withdrawals are single-leg XBT rows. Non-BTC groups are
-skipped.
+Expected columns (Kraken export headers, verified):
+ledgers ``txid,refid,time,type,subtype,aclass,asset,amount,fee,balance``;
+trades ``txid,ordertxid,pair,time,type,ordertype,price,cost,fee,vol,margin,misc,ledgers``.
+A trade is a refid group with an XBT leg and a fiat leg; deposits/withdrawals
+are single-leg XBT rows. Margin/rollover legs become taxable disposals/costs
+(following DaLI's mapping); ``settled`` rows are ignorable; any other unknown
+type raises instead of silently dropping money.
 """
 
 from __future__ import annotations
@@ -40,14 +42,52 @@ FIAT_ASSETS = {
 KrakenTx = ExchangeTx  # backward-compat alias
 
 
+def _split_ledgers_refs(value: str) -> list[str]:
+    return [part.strip() for part in (value or "").split(",") if part.strip()]
+
+
+def parse_kraken_trades(path: str | Path) -> dict[str, dict[str, str]]:
+    """Parse a Kraken trades.csv export, keyed by trade txid."""
+    trades: dict[str, dict[str, str]] = {}
+    with open(Path(path), newline="", encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            txid = (row.get("txid") or "").strip()
+            if txid:
+                trades[txid] = row
+    return trades
+
+
+def _trades_for_group(
+    rows: list[dict[str, str]], trades: dict[str, dict[str, str]]
+) -> list[dict[str, str]]:
+    """Trades rows referencing any ledger txid in this refid group."""
+    group_txids = {(r.get("txid") or "").strip() for r in rows}
+    matched = []
+    for trade in trades.values():
+        if group_txids & set(_split_ledgers_refs(trade.get("ledgers", ""))):
+            matched.append(trade)
+    return matched
+
+
+def detect_margin_activity(txs: list[ExchangeTx]) -> bool:
+    """True when any parsed trade used margin (feeds classifier leverage)."""
+    return any(tx.margin for tx in txs)
+
+
 def _parse_time(value: str) -> datetime.date:
     # Kraken exports naive local timestamps; treat as UTC (day-level use only).
     return datetime.datetime.strptime(value.strip(), "%Y-%m-%d %H:%M:%S").date()  # noqa: DTZ007
 
 
-def parse_kraken_ledgers(path: str | Path) -> list[KrakenTx]:
-    """Parse a Kraken ledgers.csv export into normalized BTC transactions."""
+def parse_kraken_ledgers(path: str | Path, trades_path: str | Path | None = None) -> list[KrakenTx]:
+    """Parse a Kraken ledgers.csv export into normalized BTC transactions.
+
+    With ``trades_path``, each refid group is joined to the trades rows that
+    reference its ledger txids: execution price/fee win over leg division and
+    margined trades are flagged (``margin`` column non-zero).
+    """
     path = Path(path)
+    trades = parse_kraken_trades(trades_path) if trades_path else {}
     groups: dict[str, list[dict[str, str]]] = {}
     with open(path, newline="", encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):
@@ -57,24 +97,48 @@ def parse_kraken_ledgers(path: str | Path) -> list[KrakenTx]:
 
     result: list[KrakenTx] = []
     for refid, rows in groups.items():
-        tx = _parse_group(refid, rows, str(path))
+        tx = _parse_group(refid, rows, str(path), _trades_for_group(rows, trades))
         if tx is not None:
             result.append(tx)
     result.sort(key=lambda tx: (tx.date.isoformat(), tx.refid))
     return result
 
 
-def _parse_group(refid: str, rows: list[dict[str, str]], filename: str) -> KrakenTx | None:
-    btc_rows = [r for r in rows if (r.get("asset") or "").strip() in BTC_ASSETS]
-    if not btc_rows:
-        return None  # non-BTC group (e.g. ETH trade)
+def _parse_group(
+    refid: str,
+    rows: list[dict[str, str]],
+    filename: str,
+    trades: list[dict[str, str]] | None = None,
+) -> KrakenTx | None:
     first = rows[0]
     date = _parse_time(first.get("time", ""))
     evidence = f"{filename}:refid:{refid}"
     entry_type = (first.get("type") or "").strip().lower()
 
+    if entry_type == "rollover":
+        fee_rows = [r for r in rows if (r.get("asset") or "").strip() in FIAT_ASSETS]
+        fee_eur = sum((abs(Decimal(r.get("amount") or "0")) for r in fee_rows), Decimal("0"))
+        fee_eur += sum((abs(Decimal(r.get("fee") or "0")) for r in rows), Decimal("0"))
+        return KrakenTx(
+            date,
+            "ROLLOVER",
+            Decimal("0"),
+            Decimal("0"),
+            fee_eur,
+            refid,
+            exchange="kraken",
+            source_label=f"Kraken rollover financing cost {refid}",
+            source_evidence=evidence,
+        )
+    if entry_type == "settled":
+        return None  # position settlement without movement; ignorable by design
+
+    btc_rows = [r for r in rows if (r.get("asset") or "").strip() in BTC_ASSETS]
+    if not btc_rows:
+        return None  # non-BTC group (e.g. ETH trade)
+
     if entry_type == "trade":
-        return _parse_trade(refid, rows, btc_rows, date, evidence)
+        return _parse_trade(refid, rows, btc_rows, date, evidence, trades or [])
     if entry_type == "withdrawal":
         btc = abs(Decimal(btc_rows[0].get("amount") or "0"))
         return KrakenTx(
@@ -88,7 +152,7 @@ def _parse_group(refid: str, rows: list[dict[str, str]], filename: str) -> Krake
             source_label=f"Kraken withdrawal {refid}",
             source_evidence=evidence,
         )
-    if entry_type == "deposit":
+    if entry_type == "deposit" or entry_type == "transfer":
         btc = abs(Decimal(btc_rows[0].get("amount") or "0"))
         return KrakenTx(
             date,
@@ -101,7 +165,20 @@ def _parse_group(refid: str, rows: list[dict[str, str]], filename: str) -> Krake
             source_label=f"Kraken deposit {refid}",
             source_evidence=evidence,
         )
-    return None
+    if entry_type in ("staking", "earn"):
+        btc = abs(Decimal(btc_rows[0].get("amount") or "0"))
+        return KrakenTx(
+            date,
+            "DEPOSIT",
+            btc,
+            Decimal("0"),
+            Decimal("0"),
+            refid,
+            exchange="kraken",
+            source_label=f"Kraken staking reward {refid}",
+            source_evidence=evidence,
+        )
+    raise ValueError(f"Kraken refid {refid}: unsupported ledger type {entry_type!r}")
 
 
 def _parse_trade(
@@ -110,6 +187,7 @@ def _parse_trade(
     btc_rows: list[dict[str, str]],
     date: datetime.date,
     evidence: str,
+    trades: list[dict[str, str]],
 ) -> KrakenTx | None:
     fiat_rows = [r for r in rows if (r.get("asset") or "").strip() in FIAT_ASSETS]
     if not fiat_rows:
@@ -121,7 +199,8 @@ def _parse_trade(
     fiat_ccy = FIAT_ASSETS[fiat_rows[0].get("asset", "").strip()]
 
     btc = abs(btc_amount)
-    kind = "BUY" if btc_amount > 0 else "SELL"
+    margined = any(Decimal(t.get("margin") or "0") != 0 for t in trades)
+    kind = "MARGIN" if margined else ("BUY" if btc_amount > 0 else "SELL")
     # Kraken quotes fiat legs in their own currency; Sprint 1 handles EUR legs
     # exactly and converts other currencies at 1:1 only when explicitly paired
     # downstream (full ECB conversion arrives with the fiat-leg matcher).
@@ -131,9 +210,19 @@ def _parse_trade(
     btc_fee = sum((Decimal(r.get("fee") or "0") for r in btc_rows), Decimal("0"))
     fiat_fee = sum((Decimal(r.get("fee") or "0") for r in fiat_rows), Decimal("0"))
     fee_eur = abs(fiat_fee) + abs(btc_fee) * eur_per_btc
+    if trades:
+        # Execution economics win over leg division (exact price/cost/fee).
+        trade = trades[0]
+        trade_price = Decimal(trade.get("price") or "0")
+        trade_fee = Decimal(trade.get("fee") or "0")
+        if trade_price > 0:
+            eur_per_btc = trade_price
+            fee_eur = abs(trade_fee) + abs(btc_fee) * eur_per_btc
 
-    side = "buy" if kind == "BUY" else "sell"
+    side = "buy" if btc_amount > 0 else "sell"
     label = f"Kraken trade {refid} ({side} {btc} BTC @ {eur_per_btc:.2f} {fiat_ccy})"
+    if margined:
+        label += " [margin]"
     return KrakenTx(
         date,
         kind,
@@ -144,7 +233,15 @@ def _parse_trade(
         exchange="kraken",
         source_label=label,
         source_evidence=evidence,
+        margin=margined,
     )
 
 
-__all__ = ["ExchangeTx", "KrakenTx", "parse_kraken_ledgers", "to_manual_csv_rows"]
+__all__ = [
+    "ExchangeTx",
+    "KrakenTx",
+    "detect_margin_activity",
+    "parse_kraken_ledgers",
+    "parse_kraken_trades",
+    "to_manual_csv_rows",
+]

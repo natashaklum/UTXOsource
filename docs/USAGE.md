@@ -80,11 +80,13 @@ Bitcoin/RPC/output sections arrive with their sprints and are ignored for now.
 
 ## 4. Flow A — exchange history to tax report
 
-Export your history (Kraken: ledgers.csv; Coinbase: transaction history;
-Binance: trade history; Bisq: trade history) and convert it:
+Export your history (Kraken: ledgers.csv **and** trades.csv — see below;
+Coinbase: transaction history; Binance: trade history; Bisq: trade history)
+and convert it:
 
 ```bash
-.venv/bin/utxoproof import --file ~/kraken_2023.csv --type kraken --out /tmp/utxo/manual.csv
+.venv/bin/utxoproof import --file ~/kraken_ledgers.csv --type kraken \
+  --trades ~/kraken_trades.csv --out /tmp/utxo/manual.csv
 ```
 
 Supported `--type` values: `kraken`, `coinbase`, `binance`, `bisq` (tagged
@@ -92,6 +94,26 @@ non-KYC), plus Belgian banks `ing`, `kbc`, `bnp`, `belfius`, `argenta` (these
 produce bank-row CSVs for fiat-leg review, not trade rows). `--kyc` overrides
 the exchange default. All non-Kraken shapes are best-effort — check the first
 converted rows by eye before trusting a full year.
+
+### Kraken: ledgers, trades, margin
+
+Kraken exports two files that belong together:
+
+- **ledgers.csv** (`txid,refid,time,type,subtype,aclass,asset,amount,fee,balance`)
+  records money movement, grouped by `refid`.
+- **trades.csv**
+  (`txid,ordertxid,pair,time,type,ordertype,price,cost,fee,vol,margin,misc,ledgers`)
+  records execution economics. Its `ledgers` column lists one *or more* ledger
+  txids, which is how trades join back to ledger groups.
+
+Ledgers alone suffice for plain spot history, but pass `--trades` anyway: it
+supplies exact execution prices and flags **margined trades** (`margin`
+non-zero). Margin settlements are taxable disposals (shown as `MARGIN` rows in
+reports); **`rollover` rows are financing costs** added to your cost basis;
+`settled` rows are ignorable; anything else unknown fails loudly instead of
+being silently dropped. If margin activity is detected, `import` tells you to
+set `used_leverage=true` in `utxoproof.toml [classifier]` — the tool cannot
+infer leverage from spot legs alone.
 
 Preview the number, then build the report bundle:
 

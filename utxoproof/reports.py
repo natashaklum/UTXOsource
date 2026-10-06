@@ -38,6 +38,7 @@ DISCLAIMER = (
 @dataclass
 class DisposalRow:
     date: str
+    kind: str
     btc: Decimal
     eur_per_btc: Decimal
     proceeds_eur: Decimal
@@ -84,6 +85,7 @@ def build_report(
         rows.append(
             DisposalRow(
                 date=d["date"],
+                kind=d.get("kind", "SELL"),
                 btc=d["btc"],
                 eur_per_btc=d["eur_per_btc"],
                 proceeds_eur=d["proceeds_eur"],
@@ -202,6 +204,7 @@ def build_tax_context(report: TaxReport) -> dict[str, object]:
         "disposals": [
             {
                 "date": r.date,
+                "kind": r.kind,
                 "btc": f"{r.btc:.8f}",
                 "eur_per_btc": _fmt(r.eur_per_btc),
                 "proceeds_eur": _fmt(r.proceeds_eur),
