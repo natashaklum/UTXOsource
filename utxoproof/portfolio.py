@@ -213,7 +213,7 @@ def svg_sparkline(
         )
         for i, v in enumerate(values)
     ]
-    line = "L".join(f"{x:.1f} {y:.1f}" for x, y in coords)
+    line = " ".join(f"{x:.1f},{y:.1f}" for x, y in coords)
     first_date = points[0][0]
     last_date = points[-1][0]
     return (

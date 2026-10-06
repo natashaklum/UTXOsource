@@ -73,6 +73,17 @@ def test_charts_contain_labels_and_links() -> None:
     assert "100,000" in ring and "80%" in ring
 
 
+def test_sparkline_points_are_valid_polyline() -> None:
+    import re
+
+    from utxoproof.portfolio import svg_sparkline
+
+    svg = svg_sparkline([("2025-01-01", Decimal("50000")), ("2025-06-01", Decimal("60000"))])
+    points = re.search(r'points="([^"]*)"', svg).group(1)
+    assert points and not any(c.isalpha() for c in points)
+    assert "<polyline" in svg
+
+
 def test_overview_and_entity_pages(tmp_path: Path) -> None:
     from utxoproof.reports import write_entity_pages, write_overview_page
 
