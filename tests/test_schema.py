@@ -11,6 +11,7 @@ EXPECTED_TABLES = {
     "price_cache",
     "sync_state",
     "source_manifest",
+    "evidence_links",
     "advisory_cache",
 }
 

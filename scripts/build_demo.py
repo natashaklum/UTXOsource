@@ -167,8 +167,39 @@ def main() -> int:
     )
     links.append('<li><a href="advisory/advisory.html">Advisory (sample graph)</a></li>')
 
-    # Provenance chain for D:0 over the same demo DB.
+    # Provenance chain for D:0 over the same demo DB, plus one dummy
+    # attachment so the appendix renders on the demo site.
+    import binascii
+    import struct
+    import zlib
+
+    from utxoproof.evidence import attach_file
     from utxoproof.reports import write_provenance_page
+
+    def _dummy_png() -> bytes:
+        def chunk(typ: bytes, data: bytes) -> bytes:
+            body = struct.pack(">I", len(data)) + typ + data
+            return body + struct.pack(">I", binascii.crc32(typ + data) & 0xFFFFFFFF)
+
+        ihdr = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
+        return (
+            b"\x89PNG\r\n\x1a\n"
+            + chunk(b"IHDR", ihdr)
+            + chunk(b"IDAT", zlib.compress(b"\x00\xc8\x1e\x1e"))
+            + chunk(b"IEND", b"")
+        )
+
+    _dummy_src = out / "dummy-confirmation.png"
+    _dummy_src.write_bytes(_dummy_png())
+    attach_file(
+        demo_db,
+        _dummy_src,
+        out / "demo-evidence",
+        2023,
+        txid="C",
+        note="dummy withdrawal confirmation",
+    )
+    _dummy_src.unlink()
 
     write_provenance_page(
         demo_db,
@@ -179,6 +210,7 @@ def main() -> int:
         as_of,
         out / "provenance",
         demo_notice=DEMO_NOTICE,
+        evidence_root=out / "demo-evidence",
     )
     links.append('<li><a href="provenance/provenance_D_0.html">Provenance D:0</a></li>')
 
@@ -207,6 +239,7 @@ def main() -> int:
             as_of,
             out / "provenance",
             demo_notice=DEMO_NOTICE,
+            evidence_root=out / "demo-evidence",
         )
     unspent = demo_db.execute(
         "SELECT txid, vout, value_sat, kyc_status FROM tx_outputs WHERE spent_by_txid IS NULL"

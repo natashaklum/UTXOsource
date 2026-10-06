@@ -132,7 +132,30 @@ never clobbered). Refresh the vendored files with
 `scripts/fetch_price_history.py`. Regenerate the demo site any time with
 `scripts/build_demo.py --out site`.
 
-## 7. Troubleshooting
+## 7. Supporting evidence (scans, screenshots, PDFs)
+
+Anything that is not machine-readable CSV goes through `attach`, which copies
+the file into `evidence/<year>/` next to your database, hashes it, and links
+it to a transaction (or leaves it general with `--tx` omitted):
+
+```bash
+.venv/bin/utxoproof attach --file ~/withdrawal-mail.png --tx <txid> \
+  --note "Kraken withdrawal confirmation" --year 2023
+.venv/bin/utxoproof attach --file ~/annual-statement.pdf --note "Bank 2023 totals"
+```
+
+Rules: originals stay untouched (the registry copy counts); re-attaching the
+same content is a no-op via content hash; name collisions gain a suffix.
+Conventions: one receipt often covers several transactions, so folders are
+organized by year, not by txid. Images render as thumbnails in provenance
+reports (large files become links); PDFs are always links.
+
+What flows where: `provenance` shows an Attachments appendix for the chain's
+transactions; `report --year` bundles `evidence/<year>/` into the evidence ZIP
+under `attachments/` with hashes in `manifest.json`. Verify a bundle any time
+by re-hashing against the manifest.
+
+## 8. Troubleshooting
 
 - `SELL with empty inventory`: your CSV sells more than it bought (check date
   order and missed deposits).

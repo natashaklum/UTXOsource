@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
+import shutil
 import sqlite3
 import zipfile
 from pathlib import Path
@@ -27,8 +28,14 @@ def sha256_file(path: str | Path) -> str:
     return digest.hexdigest()
 
 
-def record_source(db: sqlite3.Connection, path: str | Path, role: str) -> bool:
-    """Record a source file in the manifest. False when its hash exists."""
+def record_source(
+    db: sqlite3.Connection, path: str | Path, role: str, name: str | None = None
+) -> bool:
+    """Record a source file in the manifest. False when its hash exists.
+
+    ``name`` overrides the stored filename (used for evidence files, stored
+    relative to the evidence root, e.g. ``2023/receipt.png``).
+    """
     file = Path(path)
     digest = sha256_file(file)
     try:
@@ -36,7 +43,7 @@ def record_source(db: sqlite3.Connection, path: str | Path, role: str) -> bool:
             "INSERT INTO source_manifest (filename, sha256, size_bytes, role, imported_at)"
             " VALUES (?,?,?,?,?)",
             (
-                file.name,
+                name or file.name,
                 digest,
                 file.stat().st_size,
                 role,
@@ -49,6 +56,94 @@ def record_source(db: sqlite3.Connection, path: str | Path, role: str) -> bool:
     return True
 
 
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+# Thumbnails above this are replaced by a file link (keeps pages light).
+THUMBNAIL_MAX_BYTES = 2_000_000
+
+
+def attach_file(
+    db: sqlite3.Connection,
+    src: str | Path,
+    evidence_root: str | Path,
+    year: int,
+    txid: str | None = None,
+    note: str = "",
+) -> dict[str, str]:
+    """Copy ``src`` into ``evidence_root/<year>/``, hash, record and link it.
+
+    Name collisions gain a numeric suffix. Returns the manifest entry
+    (filename relative to root, sha256, txid, note).
+    """
+    src_path = Path(src)
+    if not src_path.is_file():
+        raise ValueError(f"attachment not found: {src}")
+    dest_dir = Path(evidence_root) / str(year)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / src_path.name
+    counter = 1
+    while dest.exists():
+        dest = dest_dir / f"{src_path.stem}-{counter}{src_path.suffix}"
+        counter += 1
+    shutil.copy2(src_path, dest)
+    digest = sha256_file(dest)
+    rel = f"{year}/{dest.name}"
+    record_source(db, dest, "attachment", name=rel)
+    db.execute(
+        "INSERT INTO evidence_links (sha256, txid, note, created_at) VALUES (?,?,?,?)",
+        (digest, txid, note, datetime.datetime.now(datetime.UTC).isoformat()),
+    )
+    db.commit()
+    return {"filename": rel, "sha256": digest, "txid": txid or "", "note": note}
+
+
+def attachments_for_txids(
+    db: sqlite3.Connection, evidence_root: str | Path, txids: list[str]
+) -> list[dict[str, str]]:
+    """Manifest + link rows for attachments bound to any of ``txids``."""
+    wanted = set(txids)
+    if not wanted:
+        return []
+    rows = [
+        row
+        for row in db.execute(
+            "SELECT m.filename, m.sha256, l.txid, l.note, m.size_bytes "
+            "FROM evidence_links l "
+            "JOIN source_manifest m ON m.sha256=l.sha256 "
+            "ORDER BY m.filename"
+        ).fetchall()
+        if row[2] in wanted
+    ]
+    return [
+        {
+            "filename": row[0],
+            "sha256": row[1],
+            "txid": row[2] or "",
+            "note": row[3] or "",
+            "size_bytes": str(row[4]),
+            "path": str(Path(evidence_root) / row[0]),
+        }
+        for row in rows
+    ]
+
+
+def thumbnail_data_uri(path: str | Path) -> str | None:
+    """Base64 data URI for small images; None for other types/large files."""
+    file = Path(path)
+    if file.suffix.lower() not in IMAGE_EXTENSIONS:
+        return None
+    try:
+        if file.stat().st_size > THUMBNAIL_MAX_BYTES:
+            return None
+        import base64
+
+        mime = "jpeg" if file.suffix.lower() in (".jpg", ".jpeg") else file.suffix[1:].lower()
+        raw = file.read_bytes()
+        encoded = base64.b64encode(raw).decode("ascii")
+        return f"data:image/{mime};base64,{encoded}"
+    except OSError:
+        return None
+
+
 def produce_evidence_zip(
     year: int,
     manifest_db_path: str | Path,
@@ -57,6 +152,7 @@ def produce_evidence_zip(
     intermediate: list[Path],
     output_dir: str | Path,
     timestamp: str | None = None,
+    attachments: list[Path] | None = None,
 ) -> Path:
     """Build ``utxoproof_evidence_<year>_<timestamp>.zip``. Returns its path."""
     stamp = timestamp or datetime.datetime.now(datetime.UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -76,6 +172,7 @@ def produce_evidence_zip(
         for role, arc_dir, paths in (
             ("source", "sources", sources),
             ("intermediate", "intermediate", intermediate),
+            ("attachment", "attachments", attachments or []),
         ):
             for file in paths:
                 arcname = f"{arc_dir}/{Path(file).name}"

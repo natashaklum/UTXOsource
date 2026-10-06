@@ -346,6 +346,7 @@ def write_provenance_page(
     out_dir: str | Path,
     max_depth: int = 100,
     demo_notice: str = "",
+    evidence_root: str | Path | None = None,
 ) -> Path:
     """Render the chain-of-custody page for ``txid:vout`` into ``out_dir``."""
     from utxoproof.advisory import analyze_utxo
@@ -420,12 +421,34 @@ def write_provenance_page(
             ],
             branches=branches,
             evidence=sorted({s.source_evidence for s in steps if s.source_evidence}),
+            attachments=_attachment_rows(db, [s.txid for s in steps], evidence_root),
             disclaimer=DISCLAIMER,
             demo_notice=demo_notice,
         ),
         encoding="utf-8",
     )
     return target
+
+
+def _attachment_rows(
+    db: sqlite3.Connection, txids: list[str], evidence_root: str | Path | None
+) -> list[dict[str, str]]:
+    """Attachment rows for the provenance appendix (thumbnails when small)."""
+    from utxoproof.evidence import attachments_for_txids, thumbnail_data_uri
+
+    if evidence_root is None:
+        return []
+    rows = []
+    for entry in attachments_for_txids(db, evidence_root, txids):
+        rows.append(
+            {
+                "filename": entry["filename"],
+                "txid": entry["txid"],
+                "note": entry["note"],
+                "thumbnail": thumbnail_data_uri(entry["path"]) or "",
+            }
+        )
+    return rows
 
 
 def write_alltime_page(csv_path: str | Path, out_dir: str | Path, demo_notice: str = "") -> Path:

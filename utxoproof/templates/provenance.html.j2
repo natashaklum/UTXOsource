@@ -52,6 +52,18 @@ Advisory flags: {{ flags }}.</p>
   {% endfor %}
 </ul>
 
+<h2>Attachments</h2>
+{% if attachments %}
+<table>
+  <tr><th>File</th><th>Transaction</th><th>Note</th><th>Preview</th></tr>
+  {% for a in attachments %}
+  <tr><td><code>{{ a.filename }}</code></td><td><code>{{ a.txid }}</code></td><td>{{ a.note }}</td><td>{% if a.thumbnail %}<img src="{{ a.thumbnail }}" alt="{{ a.filename }}" style="max-width:320px;">{% else %}—{% endif %}</td></tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No attachments registered for this chain. Add scans or confirmations with <code>utxoproof attach --file … --tx …</code>.</p>
+{% endif %}
+
 <p class="disclaimer">{{ disclaimer }}</p>
 </body>
 </html>

@@ -81,6 +81,20 @@ CREATE TABLE IF NOT EXISTS source_manifest (
     imported_at TEXT NOT NULL
 );
 
+-- ── Evidence links ─────────────────────────────────────────────────
+-- Human artifacts (screenshots, PDFs, scans) registered via `attach`,
+-- linked to the transactions they support. Files live under evidence/<year>/;
+-- filename is stored relative to the evidence root. Added in Sprint 11;
+-- pre-existing DBs gain it automatically (init_db is idempotent).
+
+CREATE TABLE IF NOT EXISTS evidence_links (
+    id          INTEGER PRIMARY KEY,
+    sha256      TEXT NOT NULL,           -- -> source_manifest.sha256
+    txid        TEXT,                    -- NULL = general (non-tx) evidence
+    note        TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL
+);
+
 -- ── Advisory cache ─────────────────────────────────────────────────
 -- Derived; can be recomputed at any time.
 

@@ -218,6 +218,7 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--alltime", action="store_true", help="All-time summary instead")
     report.add_argument("--out", required=True, help="Output directory")
     report.add_argument("--config", default=None, help="utxoproof.toml path")
+    report.add_argument("--evidence-dir", default=None, help="Evidence root")
     report.add_argument(
         "--source", action="append", default=[], help="Raw source file (repeatable)"
     )
@@ -267,7 +268,22 @@ def build_parser() -> argparse.ArgumentParser:
     prov.add_argument("--as-of", default=None, help="As-of date YYYY-MM-DD (default: today)")
     prov.add_argument("--depth", type=int, default=100, help="Max chain depth")
     prov.add_argument("--out", default=None, help="Output directory")
+    prov.add_argument("--evidence-dir", default=None, help="Evidence root")
+    attach = sub.add_parser("attach", help="Register a supporting file (scan, PDF, screenshot)")
+    attach.add_argument("--file", required=True, help="File to register (copied in)")
+    attach.add_argument("--db", default="~/.utxoproof/utxoproof.db")
+    attach.add_argument("--tx", default=None, help="Transaction it supports")
+    attach.add_argument("--note", default="", help="What this file proves")
+    attach.add_argument("--year", type=int, default=None, help="Evidence year")
+    attach.add_argument("--evidence-dir", default=None, help="Evidence root")
     return parser
+
+
+def _evidence_root(db_path: str, override: str | None = None) -> Path:
+    """Evidence files live next to the DB unless overridden."""
+    if override:
+        return Path(override).expanduser()
+    return Path(db_path).expanduser().parent / "evidence"
 
 
 def _open_db(path: str) -> sqlite3.Connection:
@@ -435,8 +451,34 @@ def _run_provenance(args: argparse.Namespace) -> int:
     )
     print(f"price_note: {note}")
     if args.out:
-        target = write_provenance_page(db, txid, vout, curve, price, as_of, args.out, args.depth)
+        target = write_provenance_page(
+            db,
+            txid,
+            vout,
+            curve,
+            price,
+            as_of,
+            args.out,
+            args.depth,
+            evidence_root=_evidence_root(args.db, args.evidence_dir),
+        )
         print(f"wrote {target}")
+    return 0
+
+
+def _run_attach(args: argparse.Namespace) -> int:
+    import datetime
+
+    from utxoproof.evidence import attach_file
+
+    db = _open_db(args.db)
+    year = args.year or datetime.datetime.now(datetime.UTC).date().year
+    entry = attach_file(
+        db, args.file, _evidence_root(args.db, args.evidence_dir), year, args.tx, args.note
+    )
+    print(f"registered {entry['filename']} sha256={entry['sha256'][:16]}…")
+    if entry["txid"]:
+        print(f"linked to {entry['txid']}")
     return 0
 
 
@@ -532,6 +574,16 @@ def main(argv: list[str] | None = None) -> int:
             manifest_db = build_manifest_db(manifest_db_path)
             for source in [args.input, *args.source]:
                 record_source(manifest_db, source, "source")
+            evidence_root = (
+                Path(args.evidence_dir).expanduser()
+                if args.evidence_dir
+                else Path("~/.utxoproof/evidence").expanduser()
+            )
+            year_dir = evidence_root / str(args.year)
+            attached = sorted(year_dir.glob("*")) if year_dir.is_dir() else []
+            for file in attached:
+                if file.is_file():
+                    record_source(manifest_db, file, "attachment", name=f"{args.year}/{file.name}")
             manifest_db.close()
             zip_path = produce_evidence_zip(
                 args.year,
@@ -540,6 +592,7 @@ def main(argv: list[str] | None = None) -> int:
                 [Path(s) for s in args.source],
                 [Path(args.input)],
                 args.out,
+                attachments=attached,
             )
             print(f"wrote {zip_path}")
         return 0
@@ -555,6 +608,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_advise(args)
     if args.command == "provenance":
         return _run_provenance(args)
+    if args.command == "attach":
+        return _run_attach(args)
     return 1
 
 

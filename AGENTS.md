@@ -61,6 +61,9 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
 - Evidence lives in `utxoproof/evidence.py` (SHA-256 manifest, content dedupe,
   ZIP bundle). `utxoproof report --year Y [--source F]...` builds it unless
   `--no-zip`; `report --alltime` writes the per-year summary (no ZIP).
+  Human artifacts go through `utxoproof attach` into `evidence/<year>/`
+  (hash + tx link in `evidence_links`); provenance appends them with
+  thumbnails for small images, links otherwise.
 - Dashboard lives in `utxoproof/portfolio.py` (entities, rollups, inline SVG
   charts — no JavaScript). Overview -> entity pages -> provenance pages;
   chart HTML is trusted generator output (`| safe` in templates, everything
