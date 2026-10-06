@@ -193,3 +193,43 @@ def test_cli_attach_and_zip_include_attachments(tmp_path: Path) -> None:
     assert len(zips) == 1
     with zipfile.ZipFile(zips[0]) as zf:
         assert "attachments/scan.png" in zf.namelist()
+
+
+def test_provenance_attachment_links_need_prefix(tmp_path: Path) -> None:
+    import datetime
+    from decimal import Decimal
+
+    from utxoproof.kyc import create_sample_graph
+    from utxoproof.reports import write_provenance_page
+
+    db = create_sample_graph()
+    root = tmp_path / "evidence"
+    src = tmp_path / "confirm.png"
+    src.write_bytes(sample_png())
+    attach_file(db, src, root, 2023, txid="C")
+
+    linked = write_provenance_page(
+        db,
+        "D",
+        0,
+        lambda day: Decimal("30000"),
+        Decimal("40000"),
+        datetime.date(2024, 6, 1),
+        tmp_path / "linked",
+        evidence_root=root,
+        evidence_url_prefix="../demo-evidence",
+    )
+    assert 'href="../demo-evidence/2023/confirm.png"' in linked.read_text(encoding="utf-8")
+
+    plain = write_provenance_page(
+        db,
+        "D",
+        0,
+        lambda day: Decimal("30000"),
+        Decimal("40000"),
+        datetime.date(2024, 6, 1),
+        tmp_path / "plain",
+        evidence_root=root,
+    )
+    html = plain.read_text(encoding="utf-8")
+    assert "confirm.png" in html and "demo-evidence" not in html

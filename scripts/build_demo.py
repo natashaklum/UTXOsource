@@ -211,6 +211,7 @@ def main() -> int:
         out / "provenance",
         demo_notice=DEMO_NOTICE,
         evidence_root=out / "demo-evidence",
+        evidence_url_prefix="../demo-evidence",
     )
     links.append('<li><a href="provenance/provenance_D_0.html">Provenance D:0</a></li>')
 
@@ -240,6 +241,7 @@ def main() -> int:
             out / "provenance",
             demo_notice=DEMO_NOTICE,
             evidence_root=out / "demo-evidence",
+            evidence_url_prefix="../demo-evidence",
         )
     unspent = demo_db.execute(
         "SELECT txid, vout, value_sat, kyc_status FROM tx_outputs WHERE spent_by_txid IS NULL"

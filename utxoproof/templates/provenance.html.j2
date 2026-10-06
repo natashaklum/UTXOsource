@@ -57,7 +57,7 @@ Advisory flags: {{ flags }}.</p>
 <table>
   <tr><th>File</th><th>Transaction</th><th>Note</th><th>Preview</th></tr>
   {% for a in attachments %}
-  <tr><td><code>{{ a.filename }}</code></td><td><code>{{ a.txid }}</code></td><td>{{ a.note }}</td><td>{% if a.thumbnail %}<img src="{{ a.thumbnail }}" alt="{{ a.filename }}" style="max-width:320px;">{% else %}—{% endif %}</td></tr>
+  <tr><td>{% if a.href %}<a href="{{ a.href }}"><code>{{ a.filename }}</code></a>{% else %}<code>{{ a.filename }}</code>{% endif %}</td><td><code>{{ a.txid }}</code></td><td>{{ a.note }}</td><td>{% if a.thumbnail %}<img src="{{ a.thumbnail }}" alt="{{ a.filename }}" style="max-width:320px;">{% else %}—{% endif %}</td></tr>
   {% endfor %}
 </table>
 {% else %}

@@ -347,6 +347,7 @@ def write_provenance_page(
     max_depth: int = 100,
     demo_notice: str = "",
     evidence_root: str | Path | None = None,
+    evidence_url_prefix: str = "",
 ) -> Path:
     """Render the chain-of-custody page for ``txid:vout`` into ``out_dir``."""
     from utxoproof.advisory import analyze_utxo
@@ -421,7 +422,9 @@ def write_provenance_page(
             ],
             branches=branches,
             evidence=sorted({s.source_evidence for s in steps if s.source_evidence}),
-            attachments=_attachment_rows(db, [s.txid for s in steps], evidence_root),
+            attachments=_attachment_rows(
+                db, [s.txid for s in steps], evidence_root, evidence_url_prefix
+            ),
             disclaimer=DISCLAIMER,
             demo_notice=demo_notice,
         ),
@@ -431,7 +434,10 @@ def write_provenance_page(
 
 
 def _attachment_rows(
-    db: sqlite3.Connection, txids: list[str], evidence_root: str | Path | None
+    db: sqlite3.Connection,
+    txids: list[str],
+    evidence_root: str | Path | None,
+    url_prefix: str = "",
 ) -> list[dict[str, str]]:
     """Attachment rows for the provenance appendix (thumbnails when small)."""
     from utxoproof.evidence import attachments_for_txids, thumbnail_data_uri
@@ -443,6 +449,7 @@ def _attachment_rows(
         rows.append(
             {
                 "filename": entry["filename"],
+                "href": f"{url_prefix}/{entry['filename']}" if url_prefix else "",
                 "txid": entry["txid"],
                 "note": entry["note"],
                 "thumbnail": thumbnail_data_uri(entry["path"]) or "",
