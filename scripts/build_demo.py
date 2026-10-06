@@ -55,12 +55,20 @@ DEMOS: list[Demo] = [
     ),
 ]
 
+DEMO_NOTICE = (
+    "DEMO \u2014 synthetic dummy data for illustration only. "
+    "Not real transactions; figures are meaningless for filing."
+)
+
 INDEX_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="utf-8"><title>utxoproof demo reports</title></head>
 <body>
 <h1>utxoproof demo reports</h1>
-<p>Generated from synthetic fixture data (not real transactions).</p>
+<div class="demo-banner">DEMO \u2014 dummy data on every page. Not real.</div>
+<style>.demo-banner { background: #fff3cd; border: 2px solid #e8a13d;
+border-radius: 8px; padding: 0.8em 1em; margin: 1em 0;
+font-weight: bold; text-align: center; }</style>
 <ul>
 {links}
 </ul>
@@ -98,11 +106,11 @@ def main() -> int:
                 writer.writerows(rows)
         else:
             csv_path = demo.csv_path
-        target = write_report(str(csv_path), year, out / slug)
+        target = write_report(str(csv_path), year, out / slug, demo_notice=DEMO_NOTICE)
         rel = target.relative_to(out)
         links.append(f'<li><a href="{rel}">{demo.title}</a></li>')
 
-    write_descriptors_page(out / "descriptors")
+    write_descriptors_page(out / "descriptors", demo_notice=DEMO_NOTICE)
     links.append(
         '<li><a href="descriptors/descriptors.html">Descriptor check (BIP84 vectors)</a></li>'
     )
@@ -117,11 +125,11 @@ def main() -> int:
         ("kraken-2023", out / "kraken-2023.csv"),
         ("coinbase-2023", out / "coinbase-2023.csv"),
     ):
-        write_status_page(csv_path, demo_price, price_note, out / slug)
+        write_status_page(csv_path, demo_price, price_note, out / slug, demo_notice=DEMO_NOTICE)
         links.append(f'<li><a href="{slug}/status.html">Holdings status — {slug}</a></li>')
 
     # Privacy analysis over the shared sample graph (in-memory demo DB).
-    write_privacy_page(create_sample_graph(), out / "privacy")
+    write_privacy_page(create_sample_graph(), out / "privacy", demo_notice=DEMO_NOTICE)
     links.append('<li><a href="privacy/privacy.html">Privacy report (sample graph)</a></li>')
 
     # Advisory over the sample graph + one seasoned estate UTXO.
@@ -155,6 +163,7 @@ def main() -> int:
         "illustrative demo curve",
         as_of.isoformat(),
         out / "advisory",
+        demo_notice=DEMO_NOTICE,
     )
     links.append('<li><a href="advisory/advisory.html">Advisory (sample graph)</a></li>')
 
@@ -162,13 +171,24 @@ def main() -> int:
     from utxoproof.reports import write_provenance_page
 
     write_provenance_page(
-        demo_db, "D", 0, lambda day: curve[day], _Decimal("40000"), as_of, out / "provenance"
+        demo_db,
+        "D",
+        0,
+        lambda day: curve[day],
+        _Decimal("40000"),
+        as_of,
+        out / "provenance",
+        demo_notice=DEMO_NOTICE,
     )
     links.append('<li><a href="provenance/provenance_D_0.html">Provenance D:0</a></li>')
 
     from utxoproof.reports import write_alltime_page
 
-    write_alltime_page(ROOT / "tests" / "fixtures" / "manual_2023.csv", out / "alltime")
+    write_alltime_page(
+        ROOT / "tests" / "fixtures" / "manual_2023.csv",
+        out / "alltime",
+        demo_notice=DEMO_NOTICE,
+    )
     links.append('<li><a href="alltime/summary.html">All-time summary (manual CSV)</a></li>')
 
     # Portfolio dashboard: entities -> UTXOs -> provenance drill-down.
@@ -186,6 +206,7 @@ def main() -> int:
             Decimal("40000"),
             as_of,
             out / "provenance",
+            demo_notice=DEMO_NOTICE,
         )
     unspent = demo_db.execute(
         "SELECT txid, vout, value_sat, kyc_status FROM tx_outputs WHERE spent_by_txid IS NULL"
@@ -222,20 +243,75 @@ def main() -> int:
     history = load_price_series(ROOT / "data" / "btc_eur_daily.csv")
     sparkline = svg_sparkline(history, label="BTC/EUR daily close, last 12 months")
     write_overview_page(
-        portfolio, as_of.isoformat(), "fixed demo price", out / "overview", sparkline
+        portfolio,
+        as_of.isoformat(),
+        "fixed demo price",
+        out / "overview",
+        sparkline,
+        demo_notice=DEMO_NOTICE,
     )
     flags_by_utxo = {
         utxo: ",".join(sorted(f.value for f in advisory_by_utxo[utxo].flags))
         for utxo in advisory_by_utxo
     }
-    write_entity_pages(portfolio, "../provenance", out / "entities", flags_by_utxo)
+    write_entity_pages(
+        portfolio,
+        "../provenance",
+        out / "entities",
+        flags_by_utxo,
+        demo_notice=DEMO_NOTICE,
+    )
     links.insert(
         0, '<li><a href="overview/overview.html"><strong>Portfolio overview</strong></a></li>'
     )
 
-    (out / "index.html").write_text(INDEX_TEMPLATE.format(links="\n".join(links)), encoding="utf-8")
+    _write_docs_page(out)
+    if (out / "docs" / "usage.html").is_file():
+        links.append('<li><a href="docs/usage.html">User guide (Slowstart)</a></li>')
+    (out / "index.html").write_text(
+        INDEX_TEMPLATE.replace("{links}", "\n".join(links)), encoding="utf-8"
+    )
     print(f"demo site: {out} ({len(links)} reports)")
     return 0
+
+
+def _write_docs_page(out: Path) -> None:
+    """Render docs/USAGE.md as site/docs/usage.html (needs markdown lib)."""
+    try:
+        import markdown
+    except ImportError:
+        return
+    source = ROOT / "docs" / "USAGE.md"
+    if not source.is_file():
+        return
+    body = markdown.markdown(
+        source.read_text(encoding="utf-8"), extensions=["tables", "fenced_code"]
+    )
+    css = (
+        "body{font-family:sans-serif;max-width:900px;margin:2em auto;"
+        "padding:0 1em;color:#222;}"
+        "pre{background:#f6f6f6;padding:1em;overflow-x:auto;}"
+        "code{word-break:break-all;}"
+        ".demo-banner{background:#fff3cd;border:2px solid #e8a13d;"
+        "border-radius:8px;padding:0.8em 1em;margin:1em 0;"
+        "font-weight:bold;text-align:center;}"
+    )
+    banner = (
+        '<div class="demo-banner">DEMO \u2014 docs for the demo site; '
+        "commands shown act on your own files.</div>"
+    )
+    page = [
+        "<!DOCTYPE html>",
+        '<html lang="en"><head><meta charset="utf-8">',
+        "<title>utxoproof user guide</title>",
+        f"<style>{css}</style></head><body>",
+        banner,
+        body,
+        "</body></html>",
+    ]
+    docs = out / "docs"
+    docs.mkdir(parents=True, exist_ok=True)
+    (docs / "usage.html").write_text("\n".join(page), encoding="utf-8")
 
 
 if __name__ == "__main__":

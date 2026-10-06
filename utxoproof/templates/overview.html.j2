@@ -23,6 +23,8 @@
   ul.legend { list-style: none; padding: 0; margin: 0.5em 0; }
   ul.legend li { margin: 0.2em 0; font-size: 0.9em; }
   span.dot { display: inline-block; width: 0.8em; height: 0.8em; border-radius: 50%; margin-right: 0.4em; }
+  .demo-banner { background: #fff3cd; border: 2px solid #e8a13d; border-radius: 8px;
+    padding: 0.8em 1em; margin: 1em 0; font-weight: bold; text-align: center; }
   .disclaimer { font-size: 0.85em; color: #555; border-top: 1px solid #ddd; margin-top: 2em; padding-top: 1em; }
   @media print {
     body { margin: 0; background: #fff; }
@@ -43,6 +45,7 @@
 </style>
 </head>
 <body>
+{% if demo_notice %}<div class="demo-banner">{{ demo_notice }}</div>{% endif %}
 <h1>Portfolio overview</h1>
 <p>As of {{ as_of }} at {{ current_price_eur }} EUR/BTC ({{ price_note }}).
 Demo data — click an entity to drill into its UTXOs, then a UTXO for provenance.</p>

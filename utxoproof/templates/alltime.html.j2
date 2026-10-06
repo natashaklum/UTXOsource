@@ -9,6 +9,8 @@
   th, td { border: 1px solid #999; padding: 0.4em 0.6em; text-align: right; }
   th:first-child, td:first-child { text-align: left; }
   th { background: #eee; }
+  .demo-banner { background: #fff3cd; border: 2px solid #e8a13d; border-radius: 8px;
+    padding: 0.8em 1em; margin: 1em 0; font-weight: bold; text-align: center; }
   .disclaimer { font-size: 0.85em; color: #555; border-top: 1px solid #999; margin-top: 2em; padding-top: 1em; }
   @media print {
     body { margin: 0; }
@@ -17,6 +19,7 @@
 </style>
 </head>
 <body>
+{% if demo_notice %}<div class="demo-banner">{{ demo_notice }}</div>{% endif %}
 <h1>utxoproof all-time summary</h1>
 <p>Generated {{ generated_at }} by utxoproof {{ version }} (demo data).
 Realised gains per year plus remaining lot inventory (cost basis only).</p>

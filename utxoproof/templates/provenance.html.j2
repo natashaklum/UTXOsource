@@ -11,6 +11,8 @@
   th { background: #eee; }
   tr.mixing td { background: #fff3cd; }
   code { word-break: break-all; }
+  .demo-banner { background: #fff3cd; border: 2px solid #e8a13d; border-radius: 8px;
+    padding: 0.8em 1em; margin: 1em 0; font-weight: bold; text-align: center; }
   .disclaimer { font-size: 0.85em; color: #555; border-top: 1px solid #999; margin-top: 2em; padding-top: 1em; }
   @media print {
     body { margin: 0; }
@@ -20,6 +22,7 @@
 </style>
 </head>
 <body>
+{% if demo_notice %}<div class="demo-banner">{{ demo_notice }}</div>{% endif %}
 <h1>UTXO provenance <code>{{ txid }}:{{ vout }}</code></h1>
 <p>Current amount: {{ amount_btc }} BTC ({{ current_value_eur }} EUR at {{ current_price_eur }}/BTC).
 KYC status: {{ kyc_status }} ({{ kyc_fraction }}).

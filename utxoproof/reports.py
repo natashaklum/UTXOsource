@@ -119,7 +119,7 @@ def _fmt(v: Decimal) -> str:
     return f"{v:.2f}"
 
 
-def render_report(report: TaxReport) -> str:
+def render_report(report: TaxReport, demo_notice: str = "") -> str:
     """Render the HTML report. Numbers are preformatted (2dp) for the template."""
     return _template().render(
         year=report.year,
@@ -149,6 +149,7 @@ def render_report(report: TaxReport) -> str:
         communal_eur=_fmt(report.communal_eur),
         total_eur=_fmt(report.total_eur),
         disclaimer=DISCLAIMER,
+        demo_notice=demo_notice,
     )
 
 
@@ -158,13 +159,14 @@ def write_report(
     out_dir: str | Path,
     communal_rate: Decimal = COMMUNAL_SURCHARGE_DEFAULT,
     classifier_cfg: ClassifierConfig | None = None,
+    demo_notice: str = "",
 ) -> Path:
     """Build + render + write ``report.html`` into ``out_dir``. Returns the path."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     target = out / "report.html"
     target.write_text(
-        render_report(build_report(csv_path, year, communal_rate, classifier_cfg)),
+        render_report(build_report(csv_path, year, communal_rate, classifier_cfg), demo_notice),
         encoding="utf-8",
     )
     return target
@@ -178,7 +180,7 @@ DESCRIPTORS_DEMO_XPUB = (
 DESCRIPTORS_DEMO_FINGERPRINT = "73c5da0a"
 
 
-def write_descriptors_page(out_dir: str | Path) -> Path:
+def write_descriptors_page(out_dir: str | Path, demo_notice: str = "") -> Path:
     """Render the descriptor/address check page into ``out_dir``."""
     from utxoproof.descriptors import build_descriptors, derive_addresses
 
@@ -206,6 +208,7 @@ def write_descriptors_page(out_dir: str | Path) -> Path:
             external=descriptors["external"],
             change=descriptors["change"],
             addresses=rows,
+            demo_notice=demo_notice,
         ),
         encoding="utf-8",
     )
@@ -217,6 +220,7 @@ def write_status_page(
     price_eur: Decimal,
     price_note: str,
     out_dir: str | Path,
+    demo_notice: str = "",
 ) -> Path:
     """Render the holdings status page into ``out_dir``."""
     from utxoproof.cli import compute_status
@@ -239,13 +243,14 @@ def write_status_page(
             value_eur=f"{status['value_eur']:.2f}",
             unrealized_eur=f"{status['unrealized_eur']:.2f}",
             disclaimer=DISCLAIMER,
+            demo_notice=demo_notice,
         ),
         encoding="utf-8",
     )
     return target
 
 
-def write_privacy_page(db: sqlite3.Connection, out_dir: str | Path) -> Path:
+def write_privacy_page(db: sqlite3.Connection, out_dir: str | Path, demo_notice: str = "") -> Path:
     """Run KYC seeding + propagation, then render the privacy page."""
     from utxoproof.kyc import detect_mixing_events, kyc_summary, propagate_graph, seed_source_kyc
 
@@ -278,6 +283,7 @@ def write_privacy_page(db: sqlite3.Connection, out_dir: str | Path) -> Path:
                 for e in events
             ],
             disclaimer=DISCLAIMER,
+            demo_notice=demo_notice,
         ),
         encoding="utf-8",
     )
@@ -290,6 +296,7 @@ def write_advisory_page(
     price_note: str,
     as_of: str,
     out_dir: str | Path,
+    demo_notice: str = "",
 ) -> Path:
     """Render the per-UTXO advisory table into ``out_dir``."""
     summary = portfolio_summary(advisories)
@@ -322,6 +329,7 @@ def write_advisory_page(
             estate_value_eur=f"{summary['estate_value_eur']:.2f}",
             borrow_value_eur=f"{summary['borrow_value_eur']:.2f}",
             disclaimer=DISCLAIMER,
+            demo_notice=demo_notice,
         ),
         encoding="utf-8",
     )
@@ -337,6 +345,7 @@ def write_provenance_page(
     as_of: datetime.date,
     out_dir: str | Path,
     max_depth: int = 100,
+    demo_notice: str = "",
 ) -> Path:
     """Render the chain-of-custody page for ``txid:vout`` into ``out_dir``."""
     from utxoproof.advisory import analyze_utxo
@@ -412,13 +421,14 @@ def write_provenance_page(
             branches=branches,
             evidence=sorted({s.source_evidence for s in steps if s.source_evidence}),
             disclaimer=DISCLAIMER,
+            demo_notice=demo_notice,
         ),
         encoding="utf-8",
     )
     return target
 
 
-def write_alltime_page(csv_path: str | Path, out_dir: str | Path) -> Path:
+def write_alltime_page(csv_path: str | Path, out_dir: str | Path, demo_notice: str = "") -> Path:
     """Render the all-time realized-gains summary into ``out_dir``."""
     from utxoproof.cli import compute_alltime
 
@@ -448,6 +458,7 @@ def write_alltime_page(csv_path: str | Path, out_dir: str | Path) -> Path:
             inventory_btc=f"{inventory['btc']:.8f}",
             inventory_cost=f"{inventory['cost_eur']:.2f}",
             disclaimer=DISCLAIMER,
+            demo_notice=demo_notice,
         ),
         encoding="utf-8",
     )
@@ -472,6 +483,7 @@ def write_overview_page(
     price_note: str,
     out_dir: str | Path,
     price_history_svg: str = "",
+    demo_notice: str = "",
 ) -> Path:
     """Render the portfolio dashboard into ``out_dir``."""
     from utxoproof.portfolio import donut_legend, donut_ring, svg_bars
@@ -521,6 +533,7 @@ def write_overview_page(
                 for eid, label, value, share in portfolio.allocation()
             ],
             disclaimer=DISCLAIMER,
+            demo_notice=demo_notice,
         ),
         encoding="utf-8",
     )
@@ -532,6 +545,7 @@ def write_entity_pages(
     provenance_rel: str,
     out_dir: str | Path,
     flags_by_utxo: dict[str, str] | None = None,
+    demo_notice: str = "",
 ) -> list[Path]:
     """Render one page per entity into ``out_dir``. Returns page paths."""
     from utxoproof.portfolio import svg_bars
@@ -568,6 +582,7 @@ def write_entity_pages(
                 if utxos
                 else "",
                 disclaimer=DISCLAIMER,
+                demo_notice=demo_notice,
             ),
             encoding="utf-8",
         )

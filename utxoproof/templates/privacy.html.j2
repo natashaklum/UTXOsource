@@ -10,6 +10,8 @@
   th:first-child, td:first-child { text-align: left; }
   th { background: #eee; }
   tr.mixing-origin td { background: #fff3cd; }
+  .demo-banner { background: #fff3cd; border: 2px solid #e8a13d; border-radius: 8px;
+    padding: 0.8em 1em; margin: 1em 0; font-weight: bold; text-align: center; }
   .disclaimer { font-size: 0.85em; color: #555; border-top: 1px solid #999; margin-top: 2em; padding-top: 1em; }
   @media print {
     body { margin: 0; }
@@ -18,6 +20,7 @@
 </style>
 </head>
 <body>
+{% if demo_notice %}<div class="demo-banner">{{ demo_notice }}</div>{% endif %}
 <h1>utxoproof privacy report</h1>
 <p>Generated {{ generated_at }} by utxoproof {{ version }} (demo data).
 Unspent outputs by KYC status; mixing events highlighted (amber = originating).</p>

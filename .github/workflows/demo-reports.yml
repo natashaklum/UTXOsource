@@ -26,7 +26,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install
-        run: pip install -e .
+        run: pip install -e . && pip install markdown
 
       - name: Build demo site
         run: python scripts/build_demo.py --out site

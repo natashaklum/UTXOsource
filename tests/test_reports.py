@@ -78,3 +78,38 @@ def test_privacy_page_and_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]
     assert main(["privacy", "--db", str(db_path), "--out", str(tmp_path)]) == 0
     out = capsys.readouterr().out
     assert "mixed=2" in out and "mixing_events: 2" in out
+
+
+def test_demo_banner_only_when_requested(tmp_path: Path) -> None:
+    from utxoproof.reports import write_status_page
+
+    plain = write_status_page(
+        Path(__file__).parent / "fixtures" / "manual_2023.csv",
+        Decimal("40000"),
+        "test",
+        tmp_path / "plain",
+    )
+    assert '<div class="demo-banner">' not in plain.read_text(encoding="utf-8")
+    flagged = write_status_page(
+        Path(__file__).parent / "fixtures" / "manual_2023.csv",
+        Decimal("40000"),
+        "test",
+        tmp_path / "demo",
+        demo_notice="DEMO \u2014 dummy",
+    )
+    html = flagged.read_text(encoding="utf-8")
+    assert '<div class="demo-banner">DEMO \u2014 dummy</div>' in html
+
+
+def test_docs_page_builds(tmp_path: Path) -> None:
+    import sys
+
+    pytest.importorskip("markdown")
+    sys.path.insert(0, "scripts")
+    from build_demo import _write_docs_page
+
+    out = tmp_path / "site"
+    out.mkdir()
+    _write_docs_page(out)
+    html = (out / "docs" / "usage.html").read_text(encoding="utf-8")
+    assert "utxoproof user guide" in html and "demo-banner" in html

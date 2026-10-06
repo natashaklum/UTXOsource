@@ -9,9 +9,12 @@
   th, td { border: 1px solid #999; padding: 0.4em 0.6em; text-align: left; }
   th { background: #eee; }
   code { word-break: break-all; }
+  .demo-banner { background: #fff3cd; border: 2px solid #e8a13d; border-radius: 8px;
+    padding: 0.8em 1em; margin: 1em 0; font-weight: bold; text-align: center; }
 </style>
 </head>
 <body>
+{% if demo_notice %}<div class="demo-banner">{{ demo_notice }}</div>{% endif %}
 <h1>utxoproof descriptor check</h1>
 <p>Addresses below are derived live by <code>utxoproof.descriptors</code> from the
 BIP84 spec-vector account xpub (<code>{{ xpub }}</code>, fingerprint

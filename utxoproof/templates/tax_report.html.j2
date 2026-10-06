@@ -11,6 +11,8 @@
   th { background: #eee; }
   .summary td { font-weight: bold; }
   pre.rationale { background: #f6f6f6; padding: 1em; white-space: pre-wrap; }
+  .demo-banner { background: #fff3cd; border: 2px solid #e8a13d; border-radius: 8px;
+    padding: 0.8em 1em; margin: 1em 0; font-weight: bold; text-align: center; }
   .disclaimer { font-size: 0.85em; color: #555; border-top: 1px solid #999; margin-top: 2em; padding-top: 1em; }
   @media print {
     body { margin: 0; }
@@ -20,6 +22,7 @@
 </style>
 </head>
 <body>
+{% if demo_notice %}<div class="demo-banner">{{ demo_notice }}</div>{% endif %}
 <h1>utxoproof tax report {{ year }}</h1>
 <p>Generated {{ generated_at }} by utxoproof {{ version }} (demo data).
 Cost basis method: {{ method }}. Classification: {{ classification_label }}.

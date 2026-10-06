@@ -11,6 +11,8 @@
   th { background: #eef2f7; }
   a { color: #2f6fed; }
   code { word-break: break-all; }
+  .demo-banner { background: #fff3cd; border: 2px solid #e8a13d; border-radius: 8px;
+    padding: 0.8em 1em; margin: 1em 0; font-weight: bold; text-align: center; }
   .disclaimer { font-size: 0.85em; color: #555; border-top: 1px solid #ddd; margin-top: 2em; padding-top: 1em; }
   @media print {
     body { margin: 0; background: #fff; }
@@ -28,6 +30,7 @@
 </style>
 </head>
 <body>
+{% if demo_notice %}<div class="demo-banner">{{ demo_notice }}</div>{% endif %}
 <p><a href="../index.html">← portfolio overview</a></p>
 <h1>{{ label }}</h1>
 <p>{{ kind }} — {{ detail }} Total value: {{ total_eur }} EUR.</p>
