@@ -100,7 +100,7 @@ def main() -> int:
             csv_path = out / f"{slug}.csv"
             with open(csv_path, "w", newline="", encoding="utf-8") as f:
                 writer = csv.DictWriter(
-                    f, fieldnames=["date", "side", "btc", "eur_per_btc", "fee_eur"]
+                    f, fieldnames=["date", "side", "kind", "btc", "eur_per_btc", "fee_eur"]
                 )
                 writer.writeheader()
                 writer.writerows(rows)
