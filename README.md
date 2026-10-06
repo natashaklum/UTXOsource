@@ -56,6 +56,9 @@ docker compose run --rm utxoproof sync --rpc-url http://bitcoind:8332 ...
 
 ## Quickstart
 
+Five minutes. For the twenty-minute version with concepts, config walkthrough
+and troubleshooting, read the [Slowstart guide](docs/USAGE.md).
+
 ```bash
 .venv/bin/utxoproof compute --input tests/fixtures/manual_2023.csv --year 2023
 .venv/bin/utxoproof status --input tests/fixtures/manual_2023.csv --price 40000
