@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ label }} — utxoproof</title>
+<style>
+  body { font-family: sans-serif; max-width: 1000px; margin: 2em auto; padding: 0 1em; color: #222; background: #fafbfc; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; background: #fff; }
+  th, td { border: 1px solid #ddd; padding: 0.5em 0.7em; text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  th { background: #eef2f7; }
+  a { color: #2f6fed; }
+  code { word-break: break-all; }
+  .disclaimer { font-size: 0.85em; color: #555; border-top: 1px solid #ddd; margin-top: 2em; padding-top: 1em; }
+</style>
+</head>
+<body>
+<p><a href="../index.html">← portfolio overview</a></p>
+<h1>{{ label }}</h1>
+<p>{{ kind }} — {{ detail }} Total value: {{ total_eur }} EUR.</p>
+
+{% if utxos %}
+<h2>UTXOs (click for provenance)</h2>
+<table>
+  <tr><th>UTXO</th><th>BTC</th><th>Value (EUR)</th><th>KYC</th></tr>
+  {% for u in utxos %}
+  <tr><td><a href="{{ u.href }}"><code>{{ u.id }}</code></a></td><td>{{ u.btc }}</td><td>{{ u.value }}</td><td>{{ u.kyc }}</td></tr>
+  {% endfor %}
+</table>
+<div>{{ utxo_bars | safe }}</div>
+{% endif %}
+
+{% if fiat_rows %}
+<h2>Cash positions</h2>
+<table>
+  <tr><th>Note</th><th>Amount (EUR)</th></tr>
+  {% for f in fiat_rows %}
+  <tr><td>{{ f.note }}</td><td>{{ f.amount }}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<p class="disclaimer">{{ disclaimer }}</p>
+</body>
+</html>

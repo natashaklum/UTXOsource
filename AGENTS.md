@@ -61,6 +61,10 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
 - Evidence lives in `utxoproof/evidence.py` (SHA-256 manifest, content dedupe,
   ZIP bundle). `utxoproof report --year Y [--source F]...` builds it unless
   `--no-zip`; `report --alltime` writes the per-year summary (no ZIP).
+- Dashboard lives in `utxoproof/portfolio.py` (entities, rollups, inline SVG
+  charts — no JavaScript). Overview -> entity pages -> provenance pages;
+  chart HTML is trusted generator output (`| safe` in templates, everything
+  else stays autoescaped).
 - Packaging: `Dockerfile` (+`.dockerignore`), `docker-compose.yml` (mainnet)
   and `docker-compose.regtest.yml` (dev). CI `docker` job builds + smoke-tests
   the image (no docker on dev boxes, so image builds are CI-only).

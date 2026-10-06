@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>utxoproof portfolio overview</title>
+<style>
+  body { font-family: sans-serif; max-width: 1000px; margin: 2em auto; padding: 0 1em; color: #222; background: #fafbfc; }
+  .cards { display: flex; gap: 1em; flex-wrap: wrap; margin: 1em 0; }
+  .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 1em 1.2em; min-width: 180px; }
+  .card .big { font-size: 1.6em; font-weight: bold; }
+  .card .sub { color: #555; font-size: 0.85em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; background: #fff; }
+  th, td { border: 1px solid #ddd; padding: 0.5em 0.7em; text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  th { background: #eef2f7; }
+  a { color: #2f6fed; }
+  .charts { display: flex; gap: 2em; flex-wrap: wrap; align-items: flex-start; }
+  .disclaimer { font-size: 0.85em; color: #555; border-top: 1px solid #ddd; margin-top: 2em; padding-top: 1em; }
+  @media print { body { margin: 0; background: #fff; } tr { page-break-inside: avoid; } }
+</style>
+</head>
+<body>
+<h1>Portfolio overview</h1>
+<p>As of {{ as_of }} at {{ current_price_eur }} EUR/BTC ({{ price_note }}).
+Demo data — click an entity to drill into its UTXOs, then a UTXO for provenance.</p>
+
+<div class="cards">
+  <div class="card"><div class="big">{{ net_worth_eur }}</div><div class="sub">net worth (EUR)</div></div>
+  <div class="card"><div class="big">{{ btc_total }}</div><div class="sub">BTC held</div></div>
+  <div class="card"><div class="big">{{ btc_value_eur }}</div><div class="sub">BTC value (EUR)</div></div>
+  <div class="card"><div class="big">{{ fiat_total_eur }}</div><div class="sub">cash (EUR)</div></div>
+</div>
+
+<h2>Allocation</h2>
+<div class="charts">
+  <div>{{ allocation_bars | safe }}</div>
+  <div>{{ kyc_donut | safe }}<p class="sub">BTC value by KYC status (EUR)</p></div>
+</div>
+
+<h2>Entities</h2>
+<table>
+  <tr><th>Entity</th><th>Type</th><th>BTC</th><th>Value (EUR)</th><th>Share</th></tr>
+  {% for e in entities %}
+  <tr><td><a href="{{ e.href }}">{{ e.label }}</a></td><td>{{ e.kind }}</td><td>{{ e.btc }}</td><td>{{ e.value }}</td><td>{{ e.share }}</td></tr>
+  {% endfor %}
+</table>
+
+<p class="disclaimer">{{ disclaimer }}</p>
+</body>
+</html>

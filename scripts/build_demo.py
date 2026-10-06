@@ -171,6 +171,56 @@ def main() -> int:
     write_alltime_page(ROOT / "tests" / "fixtures" / "manual_2023.csv", out / "alltime")
     links.append('<li><a href="alltime/summary.html">All-time summary (manual CSV)</a></li>')
 
+    # Portfolio dashboard: entities -> UTXOs -> provenance drill-down.
+    from utxoproof.portfolio import Entity, FiatHolding, Portfolio, UtxoHolding
+    from utxoproof.reports import write_entity_pages, write_overview_page
+    from utxoproof.reports import write_provenance_page as _write_prov
+
+    for utxo in ("C:1", "D:0", "E:0"):
+        txid, vout = utxo.split(":")
+        _write_prov(
+            demo_db,
+            txid,
+            int(vout),
+            lambda day: curve[day],
+            Decimal("40000"),
+            as_of,
+            out / "provenance",
+        )
+    unspent = demo_db.execute(
+        "SELECT txid, vout, value_sat, kyc_status FROM tx_outputs WHERE spent_by_txid IS NULL"
+    ).fetchall()
+    owner = {"E:0": "ledger-savings", "C:1": "phone-spending", "D:0": "phone-spending"}
+    portfolio = Portfolio(
+        entities=[
+            Entity("ledger-savings", "wallet", "Ledger Nano — savings", "BIP84 account"),
+            Entity("phone-spending", "wallet", "Phone spending", "Small hot wallet"),
+            Entity("ing-savings", "bank", "ING savings", "BE68 **** 7034"),
+            Entity("kraken-eur", "exchange", "Kraken EUR balance", "Uninvested euros"),
+        ],
+        utxos=[
+            UtxoHolding(
+                owner[f"{txid}:{vout}"],
+                txid,
+                vout,
+                Decimal(value_sat) / Decimal(100_000_000),
+                Decimal(value_sat) / Decimal(100_000_000) * Decimal("40000"),
+                kyc_status,
+            )
+            for txid, vout, value_sat, kyc_status in unspent
+        ],
+        fiat=[
+            FiatHolding("ing-savings", Decimal("12500"), "Savings buffer"),
+            FiatHolding("kraken-eur", Decimal("3200"), "Dry powder"),
+        ],
+        current_price_eur=Decimal("40000"),
+    )
+    write_overview_page(portfolio, as_of.isoformat(), "fixed demo price", out / "overview")
+    write_entity_pages(portfolio, "../provenance", out / "entities")
+    links.insert(
+        0, '<li><a href="overview/overview.html"><strong>Portfolio overview</strong></a></li>'
+    )
+
     (out / "index.html").write_text(INDEX_TEMPLATE.format(links="\n".join(links)), encoding="utf-8")
     print(f"demo site: {out} ({len(links)} reports)")
     return 0

@@ -13,6 +13,10 @@ utxoproof answers three questions:
 3. **Where did this coin come from?** — full chain-of-custody provenance for
    any UTXO, EUR-valued at every step.
 
+Browse the [demo portfolio dashboard](https://natashaklum.github.io/UTXOsource/overview/overview.html):
+wallets, bank and exchange balances with allocation charts, drillable down to
+each UTXO and its provenance chain.
+
 ## Status
 
 Implemented and covered by tests + live regtest runs: exchange imports
