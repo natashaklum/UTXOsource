@@ -458,11 +458,20 @@ def _entity_btc(portfolio: Portfolio, entity_id: str) -> Decimal:
     return sum((u.btc for u in portfolio.utxos if u.entity_id == entity_id), Decimal("0"))
 
 
+def _bar_color(portfolio: Portfolio, entity_id: str) -> str:
+    """Entity bar color: dominant-KYC status color, gray when no BTC inside."""
+    dominant = portfolio.dominant_kyc(entity_id)
+    if dominant is None:
+        return "#b0b0b0"
+    return Portfolio.STATUS_COLORS.get(dominant, "#8e5bd6")
+
+
 def write_overview_page(
     portfolio: Portfolio,
     as_of: str,
     price_note: str,
     out_dir: str | Path,
+    price_history_svg: str = "",
 ) -> Path:
     """Render the portfolio dashboard into ``out_dir``."""
     from utxoproof.portfolio import donut_legend, svg_bars, svg_donut
@@ -482,17 +491,23 @@ def write_overview_page(
             btc_total=f"{portfolio.btc_total:.8f}",
             btc_value_eur=f"{portfolio.btc_value_eur:,.2f}",
             fiat_total_eur=f"{portfolio.fiat_total_eur:,.2f}",
+            cost_basis_eur=f"{portfolio.cost_basis_eur:,.2f}",
+            unrealized_eur=f"{portfolio.unrealized_eur:,.2f}",
             allocation_bars=svg_bars(
                 [
                     (f"{label} ({share:.0f}%)", value, f"../entities/{eid}.html")
                     for eid, label, value, share in portfolio.allocation()
-                ]
+                ],
+                colors={
+                    label: _bar_color(portfolio, eid) for eid, label, _, _ in portfolio.allocation()
+                },
             ),
             kyc_donut=svg_donut(portfolio.kyc_split()),
             kyc_legend=[
                 {"color": color, "label": label, "value": f"{value:,.0f}"}
                 for color, label, value in donut_legend(portfolio.kyc_split())
             ],
+            price_history_svg=price_history_svg,
             entities=[
                 {
                     "href": f"../entities/{eid}.html",
@@ -516,6 +531,7 @@ def write_entity_pages(
     portfolio: Portfolio,
     provenance_rel: str,
     out_dir: str | Path,
+    flags_by_utxo: dict[str, str] | None = None,
 ) -> list[Path]:
     """Render one page per entity into ``out_dir``. Returns page paths."""
     from utxoproof.portfolio import svg_bars
@@ -543,6 +559,7 @@ def write_entity_pages(
                         "btc": f"{u.btc:.8f}",
                         "value": f"{u.eur_value:,.2f}",
                         "kyc": u.kyc_status,
+                        "flags": (flags_by_utxo or {}).get(f"{u.txid}:{u.vout}", ""),
                     }
                     for u in utxos
                 ],

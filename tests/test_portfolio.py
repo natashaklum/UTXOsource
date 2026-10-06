@@ -22,8 +22,10 @@ def _portfolio() -> Portfolio:
             Entity("bank", "bank", "ING savings", ""),
         ],
         utxos=[
-            UtxoHolding("cold", "A", 0, Decimal("2"), Decimal("80000"), "kyc"),
-            UtxoHolding("cold", "C", 1, Decimal("0.5"), Decimal("20000"), "mixed"),
+            UtxoHolding("cold", "A", 0, Decimal("2"), Decimal("80000"), "kyc", Decimal("40000")),
+            UtxoHolding(
+                "cold", "C", 1, Decimal("0.5"), Decimal("20000"), "mixed", Decimal("12500")
+            ),
         ],
         fiat=[FiatHolding("bank", Decimal("12500"), "buffer")],
         current_price_eur=PRICE,
@@ -36,6 +38,8 @@ def test_totals_and_allocation() -> None:
     assert portfolio.btc_value_eur == Decimal("100000")
     assert portfolio.fiat_total_eur == Decimal("12500")
     assert portfolio.net_worth_eur == Decimal("112500")
+    assert portfolio.cost_basis_eur == Decimal("52500")
+    assert portfolio.unrealized_eur == Decimal("47500")
     allocation = portfolio.allocation()
     assert [row[0] for row in allocation] == ["cold", "bank"]
     assert allocation[0][2] == Decimal("100000")
@@ -69,20 +73,29 @@ def test_overview_and_entity_pages(tmp_path: Path) -> None:
     from utxoproof.reports import write_entity_pages, write_overview_page
 
     portfolio = _portfolio()
-    target = write_overview_page(portfolio, "2024-06-01", "test price", tmp_path)
+    from utxoproof.portfolio import svg_sparkline
+
+    spark = svg_sparkline([("2024-01-01", Decimal("40000")), ("2024-06-01", Decimal("60000"))])
+    target = write_overview_page(portfolio, "2024-06-01", "test price", tmp_path, spark)
     html = target.read_text(encoding="utf-8")
     assert "112,500.00" in html  # net worth
+    assert "52,500.00" in html  # cost basis
+    assert "47,500.00" in html  # unrealized
+    assert "<polyline" in html
     assert "../entities/cold.html" in html
     assert "Cold storage" in html
     assert "<svg" in html and "&lt;svg" not in html  # charts not escaped
     assert 'class="legend"' in html and "#2f6fed" in html  # HTML legend
     assert "Cold storage (89%)" in html  # share on bars
 
-    pages = write_entity_pages(portfolio, "../provenance", tmp_path / "entities")
+    pages = write_entity_pages(
+        portfolio, "../provenance", tmp_path / "entities", {"A:0": "hold_recommended"}
+    )
     assert len(pages) == 2
     cold = (tmp_path / "entities" / "cold.html").read_text(encoding="utf-8")
     assert "../provenance/provenance_A_0.html" in cold
     assert "mixed" in cold
+    assert "hold_recommended" in cold
     bank = (tmp_path / "entities" / "bank.html").read_text(encoding="utf-8")
     assert "12,500.00" in bank
     assert "provenance_" not in bank  # no UTXOs, no provenance links

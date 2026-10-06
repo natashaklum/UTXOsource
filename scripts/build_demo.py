@@ -190,6 +190,7 @@ def main() -> int:
     unspent = demo_db.execute(
         "SELECT txid, vout, value_sat, kyc_status FROM tx_outputs WHERE spent_by_txid IS NULL"
     ).fetchall()
+    advisory_by_utxo = {f"{a.txid}:{a.vout}": a for a in advisories}
     owner = {"E:0": "ledger-savings", "C:1": "phone-spending", "D:0": "phone-spending"}
     portfolio = Portfolio(
         entities=[
@@ -206,6 +207,7 @@ def main() -> int:
                 Decimal(value_sat) / Decimal(100_000_000),
                 Decimal(value_sat) / Decimal(100_000_000) * Decimal("40000"),
                 kyc_status,
+                advisory_by_utxo[f"{txid}:{vout}"].acquisition_cost_eur,
             )
             for txid, vout, value_sat, kyc_status in unspent
         ],
@@ -215,8 +217,18 @@ def main() -> int:
         ],
         current_price_eur=Decimal("40000"),
     )
-    write_overview_page(portfolio, as_of.isoformat(), "fixed demo price", out / "overview")
-    write_entity_pages(portfolio, "../provenance", out / "entities")
+    from utxoproof.portfolio import load_price_series, svg_sparkline
+
+    history = load_price_series(ROOT / "data" / "btc_eur_daily.csv")
+    sparkline = svg_sparkline(history, label="BTC/EUR daily close, last 12 months")
+    write_overview_page(
+        portfolio, as_of.isoformat(), "fixed demo price", out / "overview", sparkline
+    )
+    flags_by_utxo = {
+        utxo: ",".join(sorted(f.value for f in advisory_by_utxo[utxo].flags))
+        for utxo in advisory_by_utxo
+    }
+    write_entity_pages(portfolio, "../provenance", out / "entities", flags_by_utxo)
     links.insert(
         0, '<li><a href="overview/overview.html"><strong>Portfolio overview</strong></a></li>'
     )

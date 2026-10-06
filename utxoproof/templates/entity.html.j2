@@ -12,6 +12,19 @@
   a { color: #2f6fed; }
   code { word-break: break-all; }
   .disclaimer { font-size: 0.85em; color: #555; border-top: 1px solid #ddd; margin-top: 2em; padding-top: 1em; }
+  @media print {
+    body { margin: 0; background: #fff; }
+    tr { page-break-inside: avoid; }
+    a { color: #222; text-decoration: none; }
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #14171c; color: #e6e8eb; }
+    table { background: #1d2127; }
+    th { background: #262c34; }
+    th, td { border-color: #3a414b; }
+    a { color: #7aa5ff; }
+    .disclaimer { color: #a7adb5; }
+  }
 </style>
 </head>
 <body>
@@ -22,9 +35,9 @@
 {% if utxos %}
 <h2>UTXOs (click for provenance)</h2>
 <table>
-  <tr><th>UTXO</th><th>BTC</th><th>Value (EUR)</th><th>KYC</th></tr>
+  <tr><th>UTXO</th><th>BTC</th><th>Value (EUR)</th><th>KYC</th><th>Flags</th></tr>
   {% for u in utxos %}
-  <tr><td><a href="{{ u.href }}"><code>{{ u.id }}</code></a></td><td>{{ u.btc }}</td><td>{{ u.value }}</td><td>{{ u.kyc }}</td></tr>
+  <tr><td><a href="{{ u.href }}"><code>{{ u.id }}</code></a></td><td>{{ u.btc }}</td><td>{{ u.value }}</td><td>{{ u.kyc }}</td><td>{{ u.flags }}</td></tr>
   {% endfor %}
 </table>
 <div>{{ utxo_bars | safe }}</div>

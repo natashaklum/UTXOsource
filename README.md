@@ -17,6 +17,10 @@ Browse the [demo portfolio dashboard](https://natashaklum.github.io/UTXOsource/o
 wallets, bank and exchange balances with allocation charts, drillable down to
 each UTXO and its provenance chain.
 
+Price history ships vendored (`data/btc_eur_daily.csv` from the first real
+2010 print, `data/usd_eur_daily.csv` from 1999) — refresh with
+`scripts/fetch_price_history.py`, seed caches via `EURPriceOracle.load_csv`.
+
 ## Status
 
 Implemented and covered by tests + live regtest runs: exchange imports

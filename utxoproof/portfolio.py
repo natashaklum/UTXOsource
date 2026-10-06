@@ -8,10 +8,12 @@ print-friendly).
 
 from __future__ import annotations
 
+import csv
 import html
 import math
 from dataclasses import dataclass, field
 from decimal import Decimal
+from pathlib import Path
 from typing import ClassVar
 
 
@@ -31,6 +33,7 @@ class UtxoHolding:
     btc: Decimal
     eur_value: Decimal
     kyc_status: str
+    cost_eur: Decimal = Decimal("0")
 
 
 @dataclass
@@ -73,6 +76,14 @@ class Portfolio:
     def net_worth_eur(self) -> Decimal:
         return self.btc_value_eur + self.fiat_total_eur
 
+    @property
+    def cost_basis_eur(self) -> Decimal:
+        return sum((u.cost_eur for u in self.utxos), Decimal("0"))
+
+    @property
+    def unrealized_eur(self) -> Decimal:
+        return self.btc_value_eur - self.cost_basis_eur
+
     def entity_value_eur(self, entity_id: str) -> Decimal:
         utxo_value = sum(
             (u.eur_value for u in self.utxos if u.entity_id == entity_id), Decimal("0")
@@ -81,6 +92,16 @@ class Portfolio:
             (f.amount_eur for f in self.fiat if f.entity_id == entity_id), Decimal("0")
         )
         return utxo_value + fiat_value
+
+    def dominant_kyc(self, entity_id: str) -> str | None:
+        """KYC status holding the largest BTC value in an entity (None if none)."""
+        by_status: dict[str, Decimal] = {}
+        for u in self.utxos:
+            if u.entity_id == entity_id:
+                by_status[u.kyc_status] = by_status.get(u.kyc_status, Decimal("0")) + u.eur_value
+        if not by_status:
+            return None
+        return max(sorted(by_status), key=lambda s: by_status[s])
 
     def allocation(self) -> list[tuple[str, str, Decimal, Decimal]]:
         """(entity_id, label, value_eur, share_pct) sorted by value desc."""
@@ -108,8 +129,13 @@ def svg_bars(
     items: list[tuple[str, Decimal, str]],
     width: int = 560,
     row_height: int = 26,
+    color: str = "#2f6fed",
+    colors: dict[str, str] | None = None,
 ) -> str:
-    """Horizontal bar chart. Items: (label, value, link-href or "")."""
+    """Horizontal bar chart. Items: (label, value, link-href or "").
+
+    One ``color`` for all bars, or per-label ``colors`` keyed by the label
+    prefix before " (" (entity bars use their dominant-KYC color)."""
     peak = max([value for _, value, _ in items] + [Decimal("0")])
     height = max(row_height * len(items) + 10, 30)
     rows = []
@@ -117,7 +143,8 @@ def svg_bars(
         y = 5 + i * row_height
         bar_w = int(width * 0.52 * float(value / peak)) if peak > 0 else 0
         label_cell = f'<a href="{_esc(href)}">{_esc(label)}</a>' if href else _esc(label)
-        bar_cell = f'<rect x="150" y="{y}" width="{bar_w}" height="16" fill="#2f6fed">'
+        bar_color = (colors or {}).get(label.split(" (")[0], color)
+        bar_cell = f'<rect x="150" y="{y}" width="{bar_w}" height="16" fill="{bar_color}">'
         if href:
             bar_cell = f'<a href="{_esc(href)}">{bar_cell}</a>'
         rows.append(
@@ -147,8 +174,7 @@ def svg_donut(
     radius, thickness, cx, cy = 70, 26, 90, 90
     parts = []
     angle = 0.0
-    for label, value in segments:
-        frac = float(value / total) if total > 0 else 0.0
+    for label, frac in _fracs(segments, total):
         large = 1 if frac > 0.5 else 0
         start, end = angle, angle + frac * 360.0
         angle = end
@@ -161,12 +187,70 @@ def svg_donut(
             f'<path d="M {x1:.1f} {y1:.1f} A {radius} {radius} 0 {large} 1 {x2:.1f} {y2:.1f} '
             f'stroke="{color}" stroke-width="{thickness}" fill="none"/>'
         )
+    leader = max([frac for _, frac in _fracs(segments, total)] + [0.0])
     parts.append(
-        f'<text x="{cx}" y="{cy + 6}" font-size="14" text-anchor="middle">{total:,.0f}</text>'
+        f'<text x="{cx}" y="{cy + 1}" font-size="14" text-anchor="middle">{total:,.0f}</text>'
+        f'<text x="{cx}" y="{cy + 19}" font-size="11" text-anchor="middle">{leader:.0%}</text>'
     )
     return f'<svg width="{size}" height="{size}" role="img">' + "".join(parts) + "</svg>"
+
+
+def _fracs(segments: list[tuple[str, Decimal]], total: Decimal) -> list[tuple[str, float]]:
+    return [(label, (float(value / total) if total > 0 else 0.0)) for label, value in segments]
 
 
 def _polar(cx: float, cy: float, radius: float, angle_deg: float) -> tuple[float, float]:
     r = math.radians(angle_deg - 90)
     return (cx + radius * math.cos(r), cy + radius * math.sin(r))
+
+
+def svg_sparkline(
+    points: list[tuple[str, Decimal]],
+    width: int = 560,
+    height: int = 120,
+    label: str = "",
+) -> str:
+    """Minimal value-history sparkline. Points: (date-iso, value)."""
+    if not points:
+        return ""
+    values = [float(v) for _, v in points]
+    lo, hi = min(values), max(values)
+    span = hi - lo if hi > lo else 1.0
+    n = len(points)
+    coords = [
+        (
+            40 + (width - 60) * (i / (n - 1) if n > 1 else 0.5),
+            height - 20 - (height - 40) * ((v - lo) / span),
+        )
+        for i, v in enumerate(values)
+    ]
+    line = "L".join(f"{x:.1f} {y:.1f}" for x, y in coords)
+    first_date = points[0][0]
+    last_date = points[-1][0]
+    return (
+        f'<svg width="{width}" height="{height}" role="img">'
+        f'<polyline points="{line}" fill="none" stroke="#2f6fed" stroke-width="2"/>'
+        f'<text x="40" y="{height - 5}" font-size="11">{_esc(first_date)}</text>'
+        f'<text x="{width - 5}" y="{height - 5}" font-size="11"'
+        f' text-anchor="end">{_esc(last_date)}</text>'
+        f'<text x="5" y="15" font-size="11">{hi:,.0f}</text>'
+        f'<text x="5" y="{height - 20}" font-size="11">{lo:,.0f}</text>'
+        + (f"<title>{_esc(label)}</title>" if label else "")
+        + "</svg>"
+    )
+
+
+def load_price_series(
+    csv_path: str | Path, days: int = 365, max_points: int = 120
+) -> list[tuple[str, Decimal]]:
+    """Last ``days`` of a (date, close, ...) price CSV, downsampled."""
+    with open(Path(csv_path), newline="", encoding="utf-8") as f:
+        rows = [
+            (row["date"][:10], Decimal(row["close_eur"]))
+            for row in csv.DictReader(f)
+            if row.get("date") and row.get("close_eur")
+        ]
+    rows.sort()
+    window = rows[-days:]
+    step = max(1, len(window) // max_points)
+    return window[::step]

@@ -75,3 +75,30 @@ def test_ecb_weekend_carries_friday_rate() -> None:
     oracle, _, _ = _oracle(handler)
     # 1/1.08 USD->EUR factor from Friday's publication.
     assert oracle.get_fiat_eur("USD", saturday) == Decimal("1") / Decimal("1.0800")
+
+
+def test_csv_seed_serves_offline_and_never_clobbers(tmp_path) -> None:
+    from utxoproof.price_oracle import EURPriceOracle
+
+    csv_path = tmp_path / "seed.csv"
+    csv_path.write_text(
+        "date,close_eur,source\n2021-11-10,57928.80,seed\n2023-01-01,15494.82,seed\n",
+        encoding="utf-8",
+    )
+
+    def exploding(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("no network expected")
+
+    db = open_memory_db()
+    oracle = EURPriceOracle(db, _client(exploding))
+    assert oracle.load_csv(csv_path, "BTC/EUR", "seed") == 2
+    assert oracle.get_btc_eur(datetime.date(2021, 11, 10)) == Decimal("57928.80")
+    # Reloading is a no-op; existing (live) rows win.
+    assert oracle.load_csv(csv_path, "BTC/EUR", "seed") == 0
+
+    usd_path = tmp_path / "usd.csv"
+    usd_path.write_text("date,usd_per_eur\n2023-01-13,1.0800\n", encoding="utf-8")
+    assert oracle.load_csv(usd_path, "USD/EUR", "ecb-archive", invert=True) == 1
+    assert oracle.get_fiat_eur("USD", datetime.date(2023, 1, 13)) == Decimal("1") / Decimal(
+        "1.0800"
+    )

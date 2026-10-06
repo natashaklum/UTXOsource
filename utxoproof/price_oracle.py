@@ -11,6 +11,7 @@ from __future__ import annotations
 import datetime
 import sqlite3
 from decimal import Decimal
+from pathlib import Path
 
 import httpx
 
@@ -23,6 +24,13 @@ ECB_URL_TEMPLATE = (
 
 class PriceOracleError(RuntimeError):
     pass
+
+
+def _first_value(row: dict[str, str]) -> str:
+    for key, value in row.items():
+        if key not in ("date", "source") and value not in (None, ""):
+            return str(value)
+    return ""
 
 
 class EURPriceOracle:
@@ -79,6 +87,43 @@ class EURPriceOracle:
             (date, pair),
         ).fetchone()
         return Decimal(row[0]) if row else None
+
+    def load_csv(self, path: str | Path, pair: str, source: str, invert: bool = False) -> int:
+        """Seed the cache from a CSV (date, value[, source]) file.
+
+        With ``invert``, stores 1/value (for foreign-per-EUR quotes like the
+        ECB series). Existing rows win (INSERT OR IGNORE) so live data is
+        never clobbered. Returns rows added.
+        """
+        import csv
+
+        added = 0
+        with open(path, newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                date = (row.get("date") or "").strip()[:10]
+                raw = (row.get("close_eur") or row.get("value") or _first_value(row)).strip()
+                if not date or not raw:
+                    continue
+                value = Decimal(raw)
+                if invert:
+                    if value == 0:
+                        continue
+                    value = Decimal("1") / value
+                row_source = (row.get("source") or "").strip() or source
+                cursor = self._db.execute(
+                    "INSERT OR IGNORE INTO price_cache "
+                    "(date, pair, close_eur, source, fetched_at) VALUES (?,?,?,?,?)",
+                    (
+                        date,
+                        pair,
+                        str(value),
+                        row_source,
+                        datetime.datetime.now(datetime.UTC).isoformat(),
+                    ),
+                )
+                added += cursor.rowcount
+        self._db.commit()
+        return added
 
     def _store(self, date: str, pair: str, close_eur: Decimal, source: str) -> None:
         self._db.execute(

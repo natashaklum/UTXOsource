@@ -20,7 +20,20 @@
   ul.legend li { margin: 0.2em 0; font-size: 0.9em; }
   span.dot { display: inline-block; width: 0.8em; height: 0.8em; border-radius: 50%; margin-right: 0.4em; }
   .disclaimer { font-size: 0.85em; color: #555; border-top: 1px solid #ddd; margin-top: 2em; padding-top: 1em; }
-  @media print { body { margin: 0; background: #fff; } tr { page-break-inside: avoid; } }
+  @media print {
+    body { margin: 0; background: #fff; }
+    tr, .card { page-break-inside: avoid; }
+    .cards { gap: 0.5em; }
+    a { color: #222; text-decoration: none; }
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #14171c; color: #e6e8eb; }
+    .card, table { background: #1d2127; }
+    th { background: #262c34; }
+    th, td { border-color: #3a414b; }
+    a { color: #7aa5ff; }
+    .card .sub, .disclaimer { color: #a7adb5; }
+  }
 </style>
 </head>
 <body>
@@ -33,7 +46,12 @@ Demo data — click an entity to drill into its UTXOs, then a UTXO for provenanc
   <div class="card"><div class="big">{{ btc_total }}</div><div class="sub">BTC held</div></div>
   <div class="card"><div class="big">{{ btc_value_eur }}</div><div class="sub">BTC value (EUR)</div></div>
   <div class="card"><div class="big">{{ fiat_total_eur }}</div><div class="sub">cash (EUR)</div></div>
+  <div class="card"><div class="big">{{ cost_basis_eur }}</div><div class="sub">BTC cost basis (EUR)</div></div>
+  <div class="card"><div class="big">{{ unrealized_eur }}</div><div class="sub">unrealized gain (EUR)</div></div>
 </div>
+
+<h2>BTC/EUR, last 12 months</h2>
+<div>{{ price_history_svg | safe }}</div>
 
 <h2>Allocation</h2>
 <div class="charts">
