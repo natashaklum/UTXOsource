@@ -42,11 +42,16 @@ def test_totals_and_allocation() -> None:
     assert sum(row[3] for row in allocation) == Decimal("100")
 
 
-def test_kyc_split() -> None:
+def test_kyc_split_canonical_order_and_stable_colors() -> None:
+    from utxoproof.portfolio import donut_legend
+
+    # Deliberate tie in demo data must not reshuffle status colors.
     assert _portfolio().kyc_split() == [
         ("kyc", Decimal("80000")),
         ("mixed", Decimal("20000")),
     ]
+    legend = {label: color for color, label, _ in donut_legend(_portfolio().kyc_split())}
+    assert legend == {"kyc": "#2f6fed", "mixed": "#e8a13d"}
 
 
 def test_charts_contain_labels_and_links() -> None:
@@ -56,7 +61,8 @@ def test_charts_contain_labels_and_links() -> None:
     assert "<svg" in bars and "Cold" in bars and "../entities/cold.html" in bars
     assert "100,000.00" in bars
     donut = svg_donut([("kyc", Decimal("80000")), ("mixed", Decimal("20000"))])
-    assert "<svg" in donut and "kyc" in donut and "100,000" in donut
+    assert "<svg" in donut and "100,000" in donut
+    assert "kyc" not in donut  # legend lives in HTML now, not the SVG
 
 
 def test_overview_and_entity_pages(tmp_path: Path) -> None:
@@ -69,6 +75,8 @@ def test_overview_and_entity_pages(tmp_path: Path) -> None:
     assert "../entities/cold.html" in html
     assert "Cold storage" in html
     assert "<svg" in html and "&lt;svg" not in html  # charts not escaped
+    assert 'class="legend"' in html and "#2f6fed" in html  # HTML legend
+    assert "Cold storage (89%)" in html  # share on bars
 
     pages = write_entity_pages(portfolio, "../provenance", tmp_path / "entities")
     assert len(pages) == 2

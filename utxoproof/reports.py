@@ -465,7 +465,7 @@ def write_overview_page(
     out_dir: str | Path,
 ) -> Path:
     """Render the portfolio dashboard into ``out_dir``."""
-    from utxoproof.portfolio import svg_bars, svg_donut
+    from utxoproof.portfolio import donut_legend, svg_bars, svg_donut
 
     template = jinja2.Environment(autoescape=True).from_string(
         (Path(__file__).parent / "templates" / "overview.html.j2").read_text(encoding="utf-8")
@@ -484,16 +484,21 @@ def write_overview_page(
             fiat_total_eur=f"{portfolio.fiat_total_eur:,.2f}",
             allocation_bars=svg_bars(
                 [
-                    (label, value, f"../entities/{eid}.html")
-                    for eid, label, value, _ in portfolio.allocation()
+                    (f"{label} ({share:.0f}%)", value, f"../entities/{eid}.html")
+                    for eid, label, value, share in portfolio.allocation()
                 ]
             ),
             kyc_donut=svg_donut(portfolio.kyc_split()),
+            kyc_legend=[
+                {"color": color, "label": label, "value": f"{value:,.0f}"}
+                for color, label, value in donut_legend(portfolio.kyc_split())
+            ],
             entities=[
                 {
                     "href": f"../entities/{eid}.html",
                     "label": label,
                     "kind": next(e.kind for e in portfolio.entities if e.id == eid),
+                    "utxos": sum(1 for u in portfolio.utxos if u.entity_id == eid),
                     "btc": f"{_entity_btc(portfolio, eid):.8f}",
                     "value": f"{value:,.2f}",
                     "share": f"{share:.1f}%",

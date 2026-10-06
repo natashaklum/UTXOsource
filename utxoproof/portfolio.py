@@ -12,6 +12,7 @@ import html
 import math
 from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import ClassVar
 
 
 @dataclass
@@ -45,6 +46,16 @@ class Portfolio:
     utxos: list[UtxoHolding] = field(default_factory=list)
     fiat: list[FiatHolding] = field(default_factory=list)
     current_price_eur: Decimal = Decimal("0")
+
+    # Canonical status order: stable colors and rows everywhere (value ties
+    # must not reshuffle which status gets which color).
+    STATUS_ORDER: ClassVar[tuple[str, ...]] = ("kyc", "non_kyc", "mixed", "unknown")
+    STATUS_COLORS: ClassVar[dict[str, str]] = {
+        "kyc": "#2f6fed",
+        "non_kyc": "#3faf6e",
+        "mixed": "#e8a13d",
+        "unknown": "#b0b0b0",
+    }
 
     @property
     def btc_total(self) -> Decimal:
@@ -82,11 +93,11 @@ class Portfolio:
         ]
 
     def kyc_split(self) -> list[tuple[str, Decimal]]:
-        """BTC value per KYC status, descending."""
+        """BTC value per KYC status in canonical status order."""
         by_status: dict[str, Decimal] = {}
         for u in self.utxos:
             by_status[u.kyc_status] = by_status.get(u.kyc_status, Decimal("0")) + u.eur_value
-        return sorted(by_status.items(), key=lambda kv: kv[1], reverse=True)
+        return [(s, by_status[s]) for s in self.STATUS_ORDER if s in by_status]
 
 
 def _esc(text: str) -> str:
@@ -117,40 +128,45 @@ def svg_bars(
     return f'<svg width="{width}" height="{height}" role="img">' + "".join(rows) + "</svg>"
 
 
+def donut_legend(
+    segments: list[tuple[str, Decimal]],
+) -> list[tuple[str, str, Decimal]]:
+    """(color, label, value) legend rows matching the donut ring colors."""
+    return [
+        (Portfolio.STATUS_COLORS.get(label, "#8e5bd6"), label, value) for label, value in segments
+    ]
+
+
 def svg_donut(
     segments: list[tuple[str, Decimal]],
     size: int = 180,
 ) -> str:
-    """Donut chart with legend. Segments: (label, value)."""
+    """Donut ring with center total. Legend is rendered as HTML by the caller
+    (see ``donut_legend``) so it wraps and styles like normal text."""
     total = sum((v for _, v in segments), Decimal("0"))
-    colors = ["#2f6fed", "#e8a13d", "#3faf6e", "#b0b0b0", "#8e5bd6"]
     radius, thickness, cx, cy = 70, 26, 90, 90
     parts = []
     angle = 0.0
-    for i, (label, value) in enumerate(segments):
+    for label, value in segments:
         frac = float(value / total) if total > 0 else 0.0
         large = 1 if frac > 0.5 else 0
         start, end = angle, angle + frac * 360.0
         angle = end
         if frac <= 0:
             continue
-
-        def pt(a: float) -> tuple[float, float]:
-            r = math.radians(a - 90)
-            return (cx + radius * math.cos(r), cy + radius * math.sin(r))
-
-        x1, y1 = pt(start)
-        x2, y2 = pt(end)
-        color = colors[i % len(colors)]
+        x1, y1 = _polar(cx, cy, radius, start)
+        x2, y2 = _polar(cx, cy, radius, end)
+        color = Portfolio.STATUS_COLORS.get(label, "#8e5bd6")
         parts.append(
             f'<path d="M {x1:.1f} {y1:.1f} A {radius} {radius} 0 {large} 1 {x2:.1f} {y2:.1f} '
             f'stroke="{color}" stroke-width="{thickness}" fill="none"/>'
         )
-        parts.append(
-            f'<text x="{cx + radius + 14}" y="{30 + i * 20}" font-size="12">'
-            f'<tspan fill="{color}">&#9679;</tspan> {_esc(label)} {value:,.0f}</text>'
-        )
     parts.append(
         f'<text x="{cx}" y="{cy + 6}" font-size="14" text-anchor="middle">{total:,.0f}</text>'
     )
-    return f'<svg width="{size + 190}" height="{size}" role="img">' + "".join(parts) + "</svg>"
+    return f'<svg width="{size}" height="{size}" role="img">' + "".join(parts) + "</svg>"
+
+
+def _polar(cx: float, cy: float, radius: float, angle_deg: float) -> tuple[float, float]:
+    r = math.radians(angle_deg - 90)
+    return (cx + radius * math.cos(r), cy + radius * math.sin(r))
