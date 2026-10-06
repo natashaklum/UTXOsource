@@ -13,7 +13,7 @@ utxoproof answers three questions:
 3. **Where did this coin come from?** — full chain-of-custody provenance for
    any UTXO, EUR-valued at every step.
 
-Browse the [demo portfolio dashboard](https://natashaklum.github.io/UTXOsource/overview/overview.html):
+Browse the [demo portfolio dashboard](https://natashaklum.github.io/utxoproof/overview/overview.html):
 wallets, bank and exchange balances with allocation charts, drillable down to
 each UTXO and its provenance chain.
 
@@ -28,7 +28,7 @@ Implemented and covered by tests + live regtest runs: exchange imports
 Belgian classifier with `utxoproof.toml`, HTML reports (tax, status, privacy,
 advisory, provenance, all-time) with evidence ZIPs, KYC propagation, on-chain
 descriptor sync against Bitcoin Core, and demo reports published to GitHub
-Pages on every `main` push. See the sprint roadmap in `utxo-source-plan_v5.md`
+Pages on every `main` push. See the sprint roadmap in `utxoproof-plan_v5.md`
 for what remains.
 
 ## Installation
@@ -38,8 +38,8 @@ Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 Native:
 
 ```bash
-git clone --recurse-submodules https://github.com/natashaklum/UTXOsource
-cd UTXOsource
+git clone --recurse-submodules https://github.com/natashaklum/utxoproof
+cd utxoproof
 uv venv
 VIRTUAL_ENV=.venv uv pip install -e ".[dev]"
 cp utxoproof.example.toml utxoproof.toml  # then edit municipality rate etc.
@@ -106,7 +106,7 @@ tests/
 
 Tax computation reuses [rp2](https://github.com/eprbell/rp2) via our fork
 [`natashaklum/rp2`](https://github.com/natashaklum/rp2), which adds the Belgian
-`BE` country plugin (`rp2_be`). The plan's full spec is `utxo-source-plan_v5.md`.
+`BE` country plugin (`rp2_be`). The plan's full spec is `utxoproof-plan_v5.md`.
 
 ## License
 

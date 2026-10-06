@@ -23,8 +23,8 @@ command below is also documented with flags in `utxoproof --help`.
 Native (Python 3.11+, [uv](https://docs.astral.sh/uv/)):
 
 ```bash
-git clone --recurse-submodules https://github.com/natashaklum/UTXOsource
-cd UTXOsource
+git clone --recurse-submodules https://github.com/natashaklum/utxoproof
+cd utxoproof
 uv venv
 VIRTUAL_ENV=.venv uv pip install -e ".[dev]"
 cp utxoproof.example.toml utxoproof.toml

@@ -9,9 +9,9 @@
 ## What this is
 
 utxoproof: Bitcoin wealth management + Belgian tax compliance for self-custodians.
-Full spec: `utxo-source-plan_v5.md`. Two repos:
+Full spec: `utxoproof-plan_v5.md`. Two repos:
 
-- This repo (`UTXOsource`): the tool. Python 3.11+, `utxoproof/` package.
+- This repo (`utxoproof`): the tool. Python 3.11+, `utxoproof/` package.
 - [`natashaklum/rp2`](https://github.com/natashaklum/rp2) fork: rp2 + Belgian `BE`
   country plugin. This repo depends on it (pinned SHA in `pyproject.toml`, kept in
   lockstep with the `vendor/rp2` submodule pointer).
@@ -91,7 +91,7 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   independently before pinning them in tests.
 - `S101` (asserts) is ignored for `tests/**` in `pyproject.toml`; everything else
   must satisfy `ruff check`, `ruff format`, and strict `mypy`.
-- Sprint deliverables follow `utxo-source-plan_v5.md` Sec. 20; flag spec-vs-reality
+- Sprint deliverables follow `utxoproof-plan_v5.md` Sec. 20; flag spec-vs-reality
   gaps (e.g. rp2's `AbstractCountry` has no `apply_tax` hook) instead of forcing
   the spec's shape.
 

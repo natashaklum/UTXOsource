@@ -6,8 +6,8 @@ Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/). No system pip, no C
 compiler needed — runtime deps are pure-Python by policy.
 
 ```bash
-git clone --recurse-submodules https://github.com/natashaklum/UTXOsource
-cd UTXOsource
+git clone --recurse-submodules https://github.com/natashaklum/utxoproof
+cd utxoproof
 uv venv
 VIRTUAL_ENV=.venv uv pip install -e ".[dev]"
 ```
