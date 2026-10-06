@@ -38,6 +38,31 @@ mkdir -p sources output
 docker compose run --rm utxoproof --help
 ```
 
+## 2b. Keep code and data separate (recommended)
+
+Clone the tool into one folder, keep your real financial data in a canonical
+data folder somewhere else. Everything utxoproof writes — the SQLite DB, the
+price cache, evidence files — lives under a single data directory:
+
+```bash
+git clone --recurse-submodules https://github.com/natashaklum/utxoproof utxoproof
+mkdir -p ~/utxoproof-data
+export UTXOPROOF_DATA_DIR=~/utxoproof-data   # put this in your shell profile
+```
+
+With that set, every command uses `~/utxoproof-data/utxoproof.db` and
+`~/utxoproof-data/evidence/` automatically — no flags needed, nothing lands
+in the repo checkout or gets sprayed across home. Precedence when you need an
+exception: explicit flags (`--db`, `--evidence-dir`, global `--data-dir`)
+beat the environment variable, which beats the `~/.utxoproof` default:
+
+```bash
+utxoproof --data-dir /tmp/throwaway status --input manual.csv --price 40000
+```
+
+For a first real-data trial, point the variable at an empty folder: the worst
+case is one folder to delete.
+
 ## 3. Configuration (`utxoproof.toml`)
 
 Copy `utxoproof.example.toml` and review three sections:

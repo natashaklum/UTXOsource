@@ -22,6 +22,7 @@ from typing import TypedDict
 
 from utxoproof import __version__
 from utxoproof.belgian_tax import COMMUNAL_SURCHARGE_DEFAULT, apply_belgian_tax
+from utxoproof.paths import add_data_dir_arg, db_path, evidence_root
 
 
 class DisposalDetail(TypedDict):
@@ -171,8 +172,9 @@ def compute_alltime(csv_path: str | Path) -> AlltimeResult:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="utxoproof", description="utxoproof Sprint 0")
+    parser = argparse.ArgumentParser(prog="utxoproof", description="Bitcoin wealth + tax tool")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    add_data_dir_arg(parser)
     sub = parser.add_subparsers(dest="command", required=True)
     compute = sub.add_parser("compute", help="Sprint 0 gain/loss + Belgian tax check")
     compute.add_argument("--input", required=True, help="Manual CSV path")
@@ -244,17 +246,17 @@ def build_parser() -> argparse.ArgumentParser:
     sync.add_argument("--rpc-user", default="")
     sync.add_argument("--rpc-password", default="")
     sync.add_argument("--wallet", default="utxoproof_watchonly")
-    sync.add_argument("--db", default="~/.utxoproof/utxoproof.db")
+    sync.add_argument("--db", default=None, help="SQLite DB (default: <data-dir>/utxoproof.db)")
     status = sub.add_parser("status", help="Holdings, cost basis, unrealized P&L")
     status.add_argument("--input", required=True, help="Manual CSV path")
     status.add_argument("--price", type=Decimal, default=None, help="BTC/EUR price override")
-    status.add_argument("--db", default="~/.utxoproof/utxoproof.db")
+    status.add_argument("--db", default=None, help="SQLite DB (default: <data-dir>/utxoproof.db)")
     status.add_argument("--out", default=None, help="Output directory for status.html")
     privacy = sub.add_parser("privacy", help="KYC analysis and mixing events")
-    privacy.add_argument("--db", default="~/.utxoproof/utxoproof.db")
+    privacy.add_argument("--db", default=None, help="SQLite DB (default: <data-dir>/utxoproof.db)")
     privacy.add_argument("--out", default=None, help="Output directory for privacy.html")
     advise = sub.add_parser("advise", help="Per-UTXO advisory table")
-    advise.add_argument("--db", default="~/.utxoproof/utxoproof.db")
+    advise.add_argument("--db", default=None, help="SQLite DB (default: <data-dir>/utxoproof.db)")
     advise.add_argument("--price", type=Decimal, default=None, help="BTC/EUR price override")
     advise.add_argument("--as-of", default=None, help="As-of date YYYY-MM-DD (default: today)")
     advise.add_argument("--out", default=None, help="Output directory for advisory.html")
@@ -263,7 +265,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     prov = sub.add_parser("provenance", help="Chain-of-custody report for a UTXO")
     prov.add_argument("utxo", help="txid:vout")
-    prov.add_argument("--db", default="~/.utxoproof/utxoproof.db")
+    prov.add_argument("--db", default=None, help="SQLite DB (default: <data-dir>/utxoproof.db)")
     prov.add_argument("--price", type=Decimal, default=None, help="Current BTC/EUR price")
     prov.add_argument("--as-of", default=None, help="As-of date YYYY-MM-DD (default: today)")
     prov.add_argument("--depth", type=int, default=100, help="Max chain depth")
@@ -271,19 +273,12 @@ def build_parser() -> argparse.ArgumentParser:
     prov.add_argument("--evidence-dir", default=None, help="Evidence root")
     attach = sub.add_parser("attach", help="Register a supporting file (scan, PDF, screenshot)")
     attach.add_argument("--file", required=True, help="File to register (copied in)")
-    attach.add_argument("--db", default="~/.utxoproof/utxoproof.db")
+    attach.add_argument("--db", default=None, help="SQLite DB (default: <data-dir>/utxoproof.db)")
     attach.add_argument("--tx", default=None, help="Transaction it supports")
     attach.add_argument("--note", default="", help="What this file proves")
     attach.add_argument("--year", type=int, default=None, help="Evidence year")
     attach.add_argument("--evidence-dir", default=None, help="Evidence root")
     return parser
-
-
-def _evidence_root(db_path: str, override: str | None = None) -> Path:
-    """Evidence files live next to the DB unless overridden."""
-    if override:
-        return Path(override).expanduser()
-    return Path(db_path).expanduser().parent / "evidence"
 
 
 def _open_db(path: str) -> sqlite3.Connection:
@@ -318,20 +313,21 @@ def _run_sync(args: argparse.Namespace) -> int:
     from utxoproof.onchain import BitcoinCoreOnchainImporter
 
     rpc = BitcoinRPC(args.rpc_url, args.rpc_user, args.rpc_password)
-    importer = BitcoinCoreOnchainImporter(rpc, _open_db(args.db))
+    importer = BitcoinCoreOnchainImporter(rpc, _open_db(str(db_path(args))))
     summary = importer.sync(args.wallet)
     print(f"sync: {summary['new_txs']} new / {summary['txs_seen']} seen")
     return 0
 
 
-def _resolve_price(price: Decimal | None, db_path: str) -> tuple[Decimal, str]:
+def _resolve_price(price: Decimal | None, args: argparse.Namespace) -> tuple[Decimal, str]:
     if price is not None:
         return price, "explicit --price"
     import datetime
 
+    from utxoproof.paths import db_path
     from utxoproof.price_oracle import EURPriceOracle
 
-    db = _open_db(db_path)
+    db = _open_db(str(db_path(args)))
     day = datetime.datetime.now(datetime.UTC).date() - datetime.timedelta(days=1)
     oracle = EURPriceOracle(db)
     return oracle.get_btc_eur(day), f"Kraken close {day.isoformat()}"
@@ -340,7 +336,7 @@ def _resolve_price(price: Decimal | None, db_path: str) -> tuple[Decimal, str]:
 def _run_status(args: argparse.Namespace) -> int:
     from utxoproof.reports import write_status_page
 
-    price, note = _resolve_price(args.price, args.db)
+    price, note = _resolve_price(args.price, args)
     status = compute_status(args.input, price)
     print(f"holdings_btc: {status['btc']:.8f}")
     print(f"cost_basis_eur: {status['cost_eur']:.2f}")
@@ -359,7 +355,7 @@ def _run_advise(args: argparse.Namespace) -> int:
     from utxoproof.kyc import propagate_graph, seed_source_kyc
     from utxoproof.reports import write_advisory_page
 
-    db = _open_db(args.db)
+    db = _open_db(str(db_path(args)))
     seed_source_kyc(db)
     propagate_graph(db)
     as_of = (
@@ -401,7 +397,7 @@ def _run_privacy(args: argparse.Namespace) -> int:
     from utxoproof.kyc import detect_mixing_events, kyc_summary, propagate_graph, seed_source_kyc
     from utxoproof.reports import write_privacy_page
 
-    db = _open_db(args.db)
+    db = _open_db(str(db_path(args)))
     seed_source_kyc(db)
     propagate_graph(db)
     summary = kyc_summary(db)
@@ -423,7 +419,7 @@ def _run_provenance(args: argparse.Namespace) -> int:
         vout = int(vout_str)
     except ValueError:
         raise ValueError(f"UTXO must look like txid:vout, got {args.utxo!r}") from None
-    db = _open_db(args.db)
+    db = _open_db(str(db_path(args)))
     as_of = (
         datetime.date.fromisoformat(args.as_of)
         if args.as_of
@@ -460,7 +456,7 @@ def _run_provenance(args: argparse.Namespace) -> int:
             as_of,
             args.out,
             args.depth,
-            evidence_root=_evidence_root(args.db, args.evidence_dir),
+            evidence_root=evidence_root(args),
         )
         print(f"wrote {target}")
     return 0
@@ -471,11 +467,9 @@ def _run_attach(args: argparse.Namespace) -> int:
 
     from utxoproof.evidence import attach_file
 
-    db = _open_db(args.db)
+    db = _open_db(str(db_path(args)))
     year = args.year or datetime.datetime.now(datetime.UTC).date().year
-    entry = attach_file(
-        db, args.file, _evidence_root(args.db, args.evidence_dir), year, args.tx, args.note
-    )
+    entry = attach_file(db, args.file, evidence_root(args), year, args.tx, args.note)
     print(f"registered {entry['filename']} sha256={entry['sha256'][:16]}…")
     if entry["txid"]:
         print(f"linked to {entry['txid']}")
@@ -574,12 +568,7 @@ def main(argv: list[str] | None = None) -> int:
             manifest_db = build_manifest_db(manifest_db_path)
             for source in [args.input, *args.source]:
                 record_source(manifest_db, source, "source")
-            evidence_root = (
-                Path(args.evidence_dir).expanduser()
-                if args.evidence_dir
-                else Path("~/.utxoproof/evidence").expanduser()
-            )
-            year_dir = evidence_root / str(args.year)
+            year_dir = evidence_root(args) / str(args.year)
             attached = sorted(year_dir.glob("*")) if year_dir.is_dir() else []
             for file in attached:
                 if file.is_file():

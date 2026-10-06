@@ -64,6 +64,8 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   Human artifacts go through `utxoproof attach` into `evidence/<year>/`
   (hash + tx link in `evidence_links`); provenance appends them with
   thumbnails for small images, links otherwise.
+- One data dir: `utxoproof/paths.py` (`--data-dir` > `$UTXOPROOF_DATA_DIR` >
+  `~/.utxoproof`); `--db`/`--evidence-dir` override per call.
 - Dashboard lives in `utxoproof/portfolio.py` (entities, rollups, inline SVG
   charts — no JavaScript). Overview -> entity pages -> provenance pages;
   chart HTML is trusted generator output (`| safe` in templates, everything
