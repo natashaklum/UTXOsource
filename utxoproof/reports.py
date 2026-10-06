@@ -474,7 +474,7 @@ def write_overview_page(
     price_history_svg: str = "",
 ) -> Path:
     """Render the portfolio dashboard into ``out_dir``."""
-    from utxoproof.portfolio import donut_legend, svg_bars, svg_donut
+    from utxoproof.portfolio import donut_legend, donut_ring, svg_bars
 
     template = jinja2.Environment(autoescape=True).from_string(
         (Path(__file__).parent / "templates" / "overview.html.j2").read_text(encoding="utf-8")
@@ -502,7 +502,7 @@ def write_overview_page(
                     label: _bar_color(portfolio, eid) for eid, label, _, _ in portfolio.allocation()
                 },
             ),
-            kyc_donut=svg_donut(portfolio.kyc_split()),
+            kyc_donut=donut_ring(portfolio.kyc_split()),
             kyc_legend=[
                 {"color": color, "label": label, "value": f"{value:,.0f}"}
                 for color, label, value in donut_legend(portfolio.kyc_split())

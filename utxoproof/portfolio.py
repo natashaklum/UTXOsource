@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import csv
 import html
-import math
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -164,44 +163,34 @@ def donut_legend(
     ]
 
 
-def svg_donut(
+def donut_ring(
     segments: list[tuple[str, Decimal]],
     size: int = 180,
+    thickness: int = 26,
 ) -> str:
-    """Donut ring with center total. Legend is rendered as HTML by the caller
-    (see ``donut_legend``) so it wraps and styles like normal text."""
+    """Donut ring as a conic-gradient div (no fragile 180-degree arc math).
+
+    Center shows the total and the largest segment's share. Legend is
+    rendered as HTML by the caller (see ``donut_legend``).
+    """
     total = sum((v for _, v in segments), Decimal("0"))
-    radius, thickness, cx, cy = 70, 26, 90, 90
-    parts = []
-    angle = 0.0
-    for label, frac in _fracs(segments, total):
-        large = 1 if frac > 0.5 else 0
-        start, end = angle, angle + frac * 360.0
-        angle = end
-        if frac <= 0:
-            continue
-        x1, y1 = _polar(cx, cy, radius, start)
-        x2, y2 = _polar(cx, cy, radius, end)
+    stops: list[str] = []
+    pos = 0.0
+    for label, value in segments:
+        frac = float(value / total) if total > 0 else 0.0
         color = Portfolio.STATUS_COLORS.get(label, "#8e5bd6")
-        parts.append(
-            f'<path d="M {x1:.1f} {y1:.1f} A {radius} {radius} 0 {large} 1 {x2:.1f} {y2:.1f} '
-            f'stroke="{color}" stroke-width="{thickness}" fill="none"/>'
-        )
-    leader = max([frac for _, frac in _fracs(segments, total)] + [0.0])
-    parts.append(
-        f'<text x="{cx}" y="{cy + 1}" font-size="14" text-anchor="middle">{total:,.0f}</text>'
-        f'<text x="{cx}" y="{cy + 19}" font-size="11" text-anchor="middle">{leader:.0%}</text>'
+        stops.append(f"{color} {pos:.1f}% {pos + frac * 100:.1f}%")
+        pos += frac * 100
+    leader = max([float(v / total) if total > 0 else 0.0 for _, v in segments] + [0.0])
+    hole = (size - thickness * 2) // 2
+    return (
+        f'<div class="donut" style="width:{size}px;height:{size}px;'
+        "background:conic-gradient(" + ", ".join(stops) + ')">'
+        f'<div class="donut-hole" style="width:{hole * 2}px;height:{hole * 2}px;">'
+        f'<div class="donut-total">{total:,.0f}</div>'
+        f'<div class="donut-share">{leader:.0%}</div>'
+        "</div></div>"
     )
-    return f'<svg width="{size}" height="{size}" role="img">' + "".join(parts) + "</svg>"
-
-
-def _fracs(segments: list[tuple[str, Decimal]], total: Decimal) -> list[tuple[str, float]]:
-    return [(label, (float(value / total) if total > 0 else 0.0)) for label, value in segments]
-
-
-def _polar(cx: float, cy: float, radius: float, angle_deg: float) -> tuple[float, float]:
-    r = math.radians(angle_deg - 90)
-    return (cx + radius * math.cos(r), cy + radius * math.sin(r))
 
 
 def svg_sparkline(
@@ -233,8 +222,8 @@ def svg_sparkline(
         f'<text x="40" y="{height - 5}" font-size="11">{_esc(first_date)}</text>'
         f'<text x="{width - 5}" y="{height - 5}" font-size="11"'
         f' text-anchor="end">{_esc(last_date)}</text>'
-        f'<text x="5" y="15" font-size="11">{hi:,.0f}</text>'
-        f'<text x="5" y="{height - 20}" font-size="11">{lo:,.0f}</text>'
+        f'<text x="5" y="15" font-size="11">High {hi:,.0f}</text>'
+        f'<text x="5" y="{height - 20}" font-size="11">Low {lo:,.0f}</text>'
         + (f"<title>{_esc(label)}</title>" if label else "")
         + "</svg>"
     )

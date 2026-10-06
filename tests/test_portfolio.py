@@ -9,7 +9,7 @@ from utxoproof.portfolio import (
     Portfolio,
     UtxoHolding,
     svg_bars,
-    svg_donut,
+    svg_sparkline,
 )
 
 PRICE = Decimal("40000")
@@ -64,16 +64,19 @@ def test_charts_contain_labels_and_links() -> None:
     )
     assert "<svg" in bars and "Cold" in bars and "../entities/cold.html" in bars
     assert "100,000.00" in bars
-    donut = svg_donut([("kyc", Decimal("80000")), ("mixed", Decimal("20000"))])
-    assert "<svg" in donut and "100,000" in donut
-    assert "kyc" not in donut  # legend lives in HTML now, not the SVG
+    from utxoproof.portfolio import donut_ring
+
+    ring = donut_ring([("kyc", Decimal("80000")), ("mixed", Decimal("20000"))])
+    assert "conic-gradient" in ring
+    assert "#2f6fed 0.0% 80.0%" in ring  # kyc first, stable color
+    assert "#e8a13d 80.0% 100.0%" in ring
+    assert "100,000" in ring and "80%" in ring
 
 
 def test_overview_and_entity_pages(tmp_path: Path) -> None:
     from utxoproof.reports import write_entity_pages, write_overview_page
 
     portfolio = _portfolio()
-    from utxoproof.portfolio import svg_sparkline
 
     spark = svg_sparkline([("2024-01-01", Decimal("40000")), ("2024-06-01", Decimal("60000"))])
     target = write_overview_page(portfolio, "2024-06-01", "test price", tmp_path, spark)
@@ -82,6 +85,7 @@ def test_overview_and_entity_pages(tmp_path: Path) -> None:
     assert "52,500.00" in html  # cost basis
     assert "47,500.00" in html  # unrealized
     assert "<polyline" in html
+    assert "High 60,000" in html and "Low 40,000" in html
     assert "../entities/cold.html" in html
     assert "Cold storage" in html
     assert "<svg" in html and "&lt;svg" not in html  # charts not escaped
