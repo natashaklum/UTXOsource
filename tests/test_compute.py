@@ -31,3 +31,14 @@ def test_compute_2024_only_counts_2024_sale() -> None:
     result = compute_year(FIXTURE, 2024)
     # Only the 2024-01-15 SELL counts; basis is the moving average at that point.
     assert result["gain_loss_eur"] == Decimal("1827.932900432900432900432901")
+
+
+def test_margin_sell_on_empty_inventory_names_cause() -> None:
+    """Real-data vector: margin disposal (likely short sale) with no inventory."""
+    import pytest
+
+    from utxoproof.cli import compute_year
+
+    fixture = Path(__file__).parent / "fixtures" / "margin_short.csv"
+    with pytest.raises(ValueError, match="MARGIN.*empty inventory.*short sale"):
+        compute_year(fixture, 2021)

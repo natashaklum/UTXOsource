@@ -57,6 +57,26 @@ class AlltimeResult(TypedDict):
     inventory: Inventory
 
 
+def _empty_inventory_error(row: dict[str, str]) -> ValueError:
+    """Actionable error for disposals with nothing held.
+
+    A MARGIN disposal on empty inventory is usually a short sale (sell first,
+    cover later) or an opening leg missing from the import; a plain SELL
+    means buys are missing. Short positions need negative-inventory support,
+    which the moving-average pool does not have yet.
+    """
+    date = row.get("date", "?")
+    kind = str(row.get("kind") or row.get("side", "?"))
+    if kind == "MARGIN":
+        hint = (
+            "likely a short sale or an opening margin leg outside the import; "
+            "import fuller history, or record the opening position"
+        )
+    else:
+        hint = "buys are missing; check date order, deposits and skipped rows"
+    return ValueError(f"{kind} of {row.get('btc')} BTC on {date} with empty inventory ({hint})")
+
+
 def compute_details(csv_path: str | Path, year: int) -> ComputeResult:
     """Per-disposal moving-average detail for ``year`` plus the yearly total.
 
@@ -81,7 +101,7 @@ def compute_details(csv_path: str | Path, year: int) -> ComputeResult:
                 total_cost += btc * price + fee
             elif side == "SELL":
                 if total_btc <= Decimal("0"):
-                    raise ValueError(f"SELL with empty inventory: {row}")
+                    raise _empty_inventory_error(row)
                 avg_unit = total_cost / total_btc if total_btc else Decimal("0")
                 cost_basis = avg_unit * btc
                 proceeds = btc * price - fee
@@ -131,7 +151,7 @@ def compute_inventory(csv_path: str | Path) -> Inventory:
                 total_cost += btc * unit + fee
             elif side == "SELL":
                 if total_btc <= Decimal("0"):
-                    raise ValueError(f"SELL with empty inventory: {row}")
+                    raise _empty_inventory_error(row)
                 basis = total_cost / total_btc * btc if total_btc else Decimal("0")
                 total_btc -= btc
                 total_cost -= basis

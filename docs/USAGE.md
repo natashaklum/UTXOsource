@@ -267,7 +267,10 @@ by re-hashing against the manifest.
 ## 8. Troubleshooting
 
 - `SELL with empty inventory`: your CSV sells more than it bought (check date
-  order and missed deposits).
+  order and missed deposits). A `MARGIN` disposal on empty inventory is
+  usually a **short sale** (sell first, cover later) or an opening leg outside
+  the import — short positions need negative-inventory support, which is not
+  implemented yet; import fuller history or record the opening position.
 - `importdescriptors ... Missing checksum`: upgrade utxoproof — checksums are
   appended automatically since Sprint 3.
 - Regtest `No such mempool transaction`: fixed — confirmed txs resolve via
