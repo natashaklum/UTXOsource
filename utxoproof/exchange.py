@@ -26,6 +26,8 @@ class ExchangeTx:
     source_label: str = ""
     source_evidence: str = ""
     margin: bool = False
+    wallet: str = ""
+    subclass: str = ""
 
     @property
     def fiat_amount(self) -> Decimal:
@@ -44,6 +46,13 @@ def to_manual_csv_rows(txs: list[ExchangeTx]) -> list[dict[str, str]]:
     rows = []
     for tx in txs:
         if tx.kind == "MARGIN":
+            # Fee-only margin rows (zero amount) carry cost like ROLLOVER;
+            # funded margin closes dispose like SELL.
+            if tx.btc == 0:
+                side, btc = "BUY", Decimal("0")
+            else:
+                side, btc = "SELL", tx.btc
+        elif tx.kind == "ADJUSTMENT":
             side, btc = "SELL", tx.btc
         elif tx.kind == "ROLLOVER":
             side, btc = "BUY", Decimal("0")

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import csv
 import datetime
+from collections.abc import Callable
 from decimal import Decimal
 from pathlib import Path
 
@@ -79,7 +80,11 @@ def _parse_time(value: str) -> datetime.date:
     return datetime.datetime.strptime(value.strip(), "%Y-%m-%d %H:%M:%S").date()  # noqa: DTZ007
 
 
-def parse_kraken_ledgers(path: str | Path, trades_path: str | Path | None = None) -> list[KrakenTx]:
+def parse_kraken_ledgers(
+    path: str | Path,
+    trades_path: str | Path | None = None,
+    skipped: list[tuple[str, str]] | None = None,
+) -> list[KrakenTx]:
     """Parse a Kraken ledgers.csv export into normalized BTC transactions.
 
     With ``trades_path``, each refid group is joined to the trades rows that
@@ -97,7 +102,7 @@ def parse_kraken_ledgers(path: str | Path, trades_path: str | Path | None = None
 
     result: list[KrakenTx] = []
     for refid, rows in groups.items():
-        tx = _parse_group(refid, rows, str(path), _trades_for_group(rows, trades))
+        tx = _parse_group(refid, rows, str(path), _trades_for_group(rows, trades), skipped)
         if tx is not None:
             result.append(tx)
     result.sort(key=lambda tx: (tx.date.isoformat(), tx.refid))
@@ -109,76 +114,377 @@ def _parse_group(
     rows: list[dict[str, str]],
     filename: str,
     trades: list[dict[str, str]] | None = None,
+    skipped: list[tuple[str, str]] | None = None,
 ) -> KrakenTx | None:
+    """One refid group -> zero or one record (official type table, see module doc)."""
     first = rows[0]
     date = _parse_time(first.get("time", ""))
     evidence = f"{filename}:refid:{refid}"
     entry_type = (first.get("type") or "").strip().lower()
+    subtype = (first.get("subtype") or "").strip().lower()
+    subclass = (first.get("subclass") or "").strip()
+    wallet = (first.get("wallet") or "").strip()
+
+    def skip(reason: str) -> None:
+        if skipped is not None:
+            skipped.append((refid, reason))
+
+    def base(
+        kind: str,
+        btc: Decimal,
+        price: Decimal,
+        fee: Decimal,
+        label: str,
+        margin: bool = False,
+    ) -> KrakenTx:
+        return KrakenTx(
+            date,
+            kind,
+            btc,
+            price,
+            fee,
+            refid,
+            exchange="kraken",
+            source_label=label,
+            source_evidence=evidence,
+            margin=margin,
+            wallet=wallet,
+            subclass=subclass,
+        )
 
     if entry_type == "rollover":
         fee_rows = [r for r in rows if (r.get("asset") or "").strip() in FIAT_ASSETS]
         fee_eur = sum((abs(Decimal(r.get("amount") or "0")) for r in fee_rows), Decimal("0"))
         fee_eur += sum((abs(Decimal(r.get("fee") or "0")) for r in rows), Decimal("0"))
-        return KrakenTx(
-            date,
+        return base(
             "ROLLOVER",
             Decimal("0"),
             Decimal("0"),
             fee_eur,
-            refid,
-            exchange="kraken",
-            source_label=f"Kraken rollover financing cost {refid}",
-            source_evidence=evidence,
+            f"Kraken rollover financing cost {refid}",
         )
     if entry_type == "settled":
-        return None  # position settlement without movement; ignorable by design
+        skip("settled: margin position settled on spot, no movement")
+        return None
+
+    if entry_type in ("margin", "margin trade"):
+        btc_rows = [r for r in rows if (r.get("asset") or "").strip() in BTC_ASSETS]
+        fiat_rows = [r for r in rows if (r.get("asset") or "").strip() in FIAT_ASSETS]
+        if not btc_rows and not fiat_rows:
+            skip(f"{entry_type}: non-BTC leg, out of scope")
+            return None
+        amount = sum((Decimal(r.get("amount") or "0") for r in btc_rows), Decimal("0"))
+        if amount == 0:
+            fee_eur = sum(
+                (
+                    abs(Decimal(r.get("amount") or "0"))
+                    for r in rows
+                    if (r.get("asset") or "").strip() in FIAT_ASSETS
+                ),
+                Decimal("0"),
+            )
+            fee_eur += sum((abs(Decimal(r.get("fee") or "0")) for r in rows), Decimal("0"))
+            return base(
+                "MARGIN",
+                Decimal("0"),
+                Decimal("0"),
+                fee_eur,
+                f"Kraken margin financing cost {refid}",
+                margin=True,
+            )
+        return _parse_margin_disposal(
+            refid, rows, btc_rows, date, evidence, trades or [], wallet, subclass
+        )
+
+    if entry_type in ("spend", "receive"):
+        return _parse_spend_receive(
+            refid, rows, date, evidence, trades or [], wallet, subclass, skip
+        )
+
+    if entry_type == "adjustment":
+        return _parse_adjustment(refid, rows, date, evidence, wallet, subclass)
+
+    if entry_type == "earn":
+        if subtype == "reward" or not subtype:
+            btc_rows = [r for r in rows if (r.get("asset") or "").strip() in BTC_ASSETS]
+            if not btc_rows:
+                skip("earn: non-BTC reward")
+                return None
+            btc = abs(Decimal(btc_rows[0].get("amount") or "0"))
+            return base("DEPOSIT", btc, Decimal("0"), Decimal("0"), f"Kraken earn reward {refid}")
+        if subtype in _INTERNAL_SUBTYPES:
+            skip(f"earn/{subtype}: internal allocation move")
+            return None
+        raise ValueError(f"Kraken refid {refid}: unsupported earn subtype {subtype!r}")
+
+    if entry_type == "invite bonus":
+        btc_rows = [r for r in rows if (r.get("asset") or "").strip() in BTC_ASSETS]
+        if not btc_rows:
+            skip("invite bonus: non-BTC reward")
+            return None
+        return base(
+            "DEPOSIT",
+            abs(Decimal(btc_rows[0].get("amount") or "0")),
+            Decimal("0"),
+            Decimal("0"),
+            f"Kraken invite bonus {refid}",
+        )
+
+    if entry_type == "transfer":
+        if subtype in _INTERNAL_SUBTYPES:
+            skip(f"transfer/{subtype}: internal move between balances")
+            return None
+        btc_rows = [r for r in rows if (r.get("asset") or "").strip() in BTC_ASSETS]
+        if not btc_rows:
+            return None
+        return base(
+            "DEPOSIT",
+            abs(Decimal(btc_rows[0].get("amount") or "0")),
+            Decimal("0"),
+            Decimal("0"),
+            f"Kraken transfer {refid}",
+        )
 
     btc_rows = [r for r in rows if (r.get("asset") or "").strip() in BTC_ASSETS]
     if not btc_rows:
         return None  # non-BTC group (e.g. ETH trade)
 
     if entry_type == "trade":
-        return _parse_trade(refid, rows, btc_rows, date, evidence, trades or [])
+        return _parse_trade(refid, rows, btc_rows, date, evidence, trades or [], wallet, subclass)
     if entry_type == "withdrawal":
-        btc = abs(Decimal(btc_rows[0].get("amount") or "0"))
-        return KrakenTx(
-            date,
+        return base(
             "WITHDRAWAL",
-            btc,
+            abs(Decimal(btc_rows[0].get("amount") or "0")),
             Decimal("0"),
             Decimal("0"),
-            refid,
-            exchange="kraken",
-            source_label=f"Kraken withdrawal {refid}",
-            source_evidence=evidence,
+            f"Kraken withdrawal {refid}",
         )
-    if entry_type == "deposit" or entry_type == "transfer":
-        btc = abs(Decimal(btc_rows[0].get("amount") or "0"))
-        return KrakenTx(
-            date,
+    if entry_type == "deposit":
+        return base(
             "DEPOSIT",
-            btc,
+            abs(Decimal(btc_rows[0].get("amount") or "0")),
             Decimal("0"),
             Decimal("0"),
-            refid,
-            exchange="kraken",
-            source_label=f"Kraken deposit {refid}",
-            source_evidence=evidence,
+            f"Kraken deposit {refid}",
         )
-    if entry_type in ("staking", "earn"):
-        btc = abs(Decimal(btc_rows[0].get("amount") or "0"))
-        return KrakenTx(
-            date,
+    if entry_type == "staking":
+        return base(
             "DEPOSIT",
-            btc,
+            abs(Decimal(btc_rows[0].get("amount") or "0")),
             Decimal("0"),
             Decimal("0"),
-            refid,
-            exchange="kraken",
-            source_label=f"Kraken staking reward {refid}",
-            source_evidence=evidence,
+            f"Kraken staking reward {refid}",
         )
     raise ValueError(f"Kraken refid {refid}: unsupported ledger type {entry_type!r}")
+
+
+_INTERNAL_SUBTYPES = frozenset(
+    {
+        "allocation",
+        "deallocation",
+        "autoallocate",
+        "migration",
+        "spottostaking",
+        "stakingfromspot",
+        "stakingtospot",
+        "spotfromstaking",
+        "spottofutures",
+        "spotfromfutures",
+    }
+)
+
+
+def _parse_margin_disposal(
+    refid: str,
+    rows: list[dict[str, str]],
+    btc_rows: list[dict[str, str]],
+    date: datetime.date,
+    evidence: str,
+    trades: list[dict[str, str]],
+    wallet: str,
+    subclass: str,
+) -> KrakenTx | None:
+    """Non-zero margin settlement leg -> taxable MARGIN disposal."""
+    if not btc_rows:
+        return None  # non-BTC margin leg; out of scope like any altcoin row
+    btc_amount = sum((Decimal(r.get("amount") or "0") for r in btc_rows), Decimal("0"))
+    if btc_amount == 0:
+        return None
+    price = Decimal("0")
+    if trades:
+        price = Decimal(trades[0].get("price") or "0")
+    if price <= 0:
+        fiat_rows = [r for r in rows if (r.get("asset") or "").strip() in FIAT_ASSETS]
+        fiat_total = sum((abs(Decimal(r.get("amount") or "0")) for r in fiat_rows), Decimal("0"))
+        if fiat_total > 0:
+            price = fiat_total / abs(btc_amount)
+    if price <= 0:
+        raise ValueError(
+            f"Kraken refid {refid}: margin disposal without price (no linked trade, no fiat leg)"
+        )
+    btc = abs(btc_amount)
+    btc_fee = sum((Decimal(r.get("fee") or "0") for r in btc_rows), Decimal("0"))
+    fiat_fee = sum(
+        (
+            Decimal(r.get("fee") or "0")
+            for r in rows
+            if (r.get("asset") or "").strip() in FIAT_ASSETS
+        ),
+        Decimal("0"),
+    )
+    return KrakenTx(
+        date,
+        "MARGIN",
+        btc,
+        price,
+        abs(fiat_fee) + abs(btc_fee) * price,
+        refid,
+        exchange="kraken",
+        source_label=f"Kraken margin settlement {refid} ({btc} BTC @ {price:.2f})",
+        source_evidence=evidence,
+        margin=True,
+        wallet=wallet,
+        subclass=subclass,
+    )
+
+
+def _parse_spend_receive(
+    refid: str,
+    rows: list[dict[str, str]],
+    date: datetime.date,
+    evidence: str,
+    trades: list[dict[str, str]],
+    wallet: str,
+    subclass: str,
+    skip: Callable[[str], None],
+) -> KrakenTx | None:
+    """Instant-buy spend/receive pairs -> trade-equivalent; lone legs -> cashflow."""
+    spend = [r for r in rows if (r.get("type") or "").strip().lower() == "spend"]
+    receive = [r for r in rows if (r.get("type") or "").strip().lower() == "receive"]
+
+    def _btc(rs: list[dict[str, str]]) -> Decimal:
+        return sum(
+            (
+                Decimal(r.get("amount") or "0")
+                for r in rs
+                if (r.get("asset") or "").strip() in BTC_ASSETS
+            ),
+            Decimal("0"),
+        )
+
+    btc_in, btc_out = _btc(receive), _btc(spend)
+    if btc_in == 0 and btc_out == 0:
+        return None
+    if not spend or not receive:
+        # Lone leg without counterpart: cashflow, no gain computed.
+        btc = abs(btc_in + btc_out)
+        kind = "DEPOSIT" if receive else "WITHDRAWAL"
+        return KrakenTx(
+            date,
+            kind,
+            btc,
+            Decimal("0"),
+            Decimal("0"),
+            refid,
+            exchange="kraken",
+            source_label=f"Kraken lone {'receive' if kind == 'DEPOSIT' else 'spend'} {refid}",
+            source_evidence=evidence,
+            wallet=wallet,
+            subclass=subclass,
+        )
+    # Paired spend+receive (e.g. instant buy: fiat out, BTC in).
+    net = btc_in + btc_out  # spend amounts are negative
+    if net == 0:
+        skip("spend/receive nets to zero")
+        return None
+    price = Decimal("0")
+    if trades:
+        price = Decimal(trades[0].get("price") or "0")
+    if price <= 0:
+        fiat_rows = [r for r in rows if (r.get("asset") or "").strip() in FIAT_ASSETS]
+        fiat_total = sum((abs(Decimal(r.get("amount") or "0")) for r in fiat_rows), Decimal("0"))
+        if fiat_total > 0 and abs(net) > 0:
+            price = fiat_total / abs(net)
+    if price <= 0:
+        raise ValueError(f"Kraken refid {refid}: spend/receive without price")
+    kind = "BUY" if net > 0 else "SELL"
+    return KrakenTx(
+        date,
+        kind,
+        abs(net),
+        price,
+        Decimal("0"),
+        refid,
+        exchange="kraken",
+        source_label=f"Kraken instant {'buy' if kind == 'BUY' else 'sell'} {refid}",
+        source_evidence=evidence,
+        wallet=wallet,
+        subclass=subclass,
+    )
+
+
+def _parse_adjustment(
+    refid: str,
+    rows: list[dict[str, str]],
+    date: datetime.date,
+    evidence: str,
+    wallet: str,
+    subclass: str,
+) -> KrakenTx | None:
+    """Delisting conversion (out old asset, in new asset) -> disposal of outflow."""
+    btc_out = abs(
+        sum(
+            (
+                Decimal(r.get("amount") or "0")
+                for r in rows
+                if (r.get("asset") or "").strip() in BTC_ASSETS
+                and Decimal(r.get("amount") or "0") < 0
+            ),
+            Decimal("0"),
+        )
+    )
+    btc_in = sum(
+        (
+            Decimal(r.get("amount") or "0")
+            for r in rows
+            if (r.get("asset") or "").strip() in BTC_ASSETS and Decimal(r.get("amount") or "0") > 0
+        ),
+        Decimal("0"),
+    )
+    if btc_out == 0:
+        if btc_in > 0:
+            return KrakenTx(
+                date,
+                "DEPOSIT",
+                btc_in,
+                Decimal("0"),
+                Decimal("0"),
+                refid,
+                exchange="kraken",
+                source_label=f"Kraken adjustment credit {refid}",
+                source_evidence=evidence,
+                wallet=wallet,
+                subclass=subclass,
+            )
+        return None  # non-BTC conversion; out of scope
+    fiat_rows = [r for r in rows if (r.get("asset") or "").strip() in FIAT_ASSETS]
+    fiat_total = sum((abs(Decimal(r.get("amount") or "0")) for r in fiat_rows), Decimal("0"))
+    price = fiat_total / btc_out if fiat_total > 0 else Decimal("0")
+    if price <= 0:
+        raise ValueError(f"Kraken refid {refid}: adjustment without price")
+    return KrakenTx(
+        date,
+        "ADJUSTMENT",
+        btc_out,
+        price,
+        Decimal("0"),
+        refid,
+        exchange="kraken",
+        source_label=f"Kraken delisting conversion {refid}",
+        source_evidence=evidence,
+        wallet=wallet,
+        subclass=subclass,
+    )
 
 
 def _parse_trade(
@@ -188,6 +494,8 @@ def _parse_trade(
     date: datetime.date,
     evidence: str,
     trades: list[dict[str, str]],
+    wallet: str = "",
+    subclass: str = "",
 ) -> KrakenTx | None:
     fiat_rows = [r for r in rows if (r.get("asset") or "").strip() in FIAT_ASSETS]
     if not fiat_rows:
@@ -234,6 +542,8 @@ def _parse_trade(
         source_label=label,
         source_evidence=evidence,
         margin=margined,
+        wallet=wallet,
+        subclass=subclass,
     )
 
 

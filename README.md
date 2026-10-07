@@ -105,7 +105,8 @@ utxoproof/
   belgian_tax.py  # 33% flat + communal surcharge, proportional fee-split
   cli.py          # compute/report/status/privacy/advise/provenance/setup/sync
   db.py + schema.sql  # Sec. 8 SQLite schema (tx graph, prices, KYC…)
-  exchange.py + kraken_csv.py (ledgers + trades join, margin/rollover)
+  exchange.py + kraken_csv.py (ledgers + trades join, margin/rollover,
+    spend/receive, adjustments, earn subtypes; subclass/wallet captured)
     / coinbase_csv.py / binance_csv.py / bisq_csv.py
   banks.py + matching.py  # Belgian bank profiles, fiat-leg matcher
   price_oracle.py  # Kraken OHLC + CoinGecko + ECB, SQLite cache

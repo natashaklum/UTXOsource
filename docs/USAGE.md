@@ -147,8 +147,10 @@ converted rows by eye before trusting a full year.
 
 Kraken exports two files that belong together:
 
-- **ledgers.csv** (`txid,refid,time,type,subtype,aclass,asset,amount,fee,balance`)
-  records money movement, grouped by `refid`.
+- **ledgers.csv**
+  (`txid,refid,time,type,subtype,aclass[,subclass],asset[,wallet],amount,fee,balance`)
+  records money movement, grouped by `refid`. Newer exports add `subclass`
+  (fiat/crypto/…) and `wallet` (`spot / main`, Earn, …) — both captured.
 - **trades.csv**
   (`txid,ordertxid,pair,time,type,ordertype,price,cost,fee,vol,margin,misc,ledgers`)
   records execution economics. Its `ledgers` column lists one *or more* ledger
@@ -162,6 +164,15 @@ reports); **`rollover` rows are financing costs** added to your cost basis;
 being silently dropped. If margin activity is detected, `import` tells you to
 set `used_leverage=true` in `utxoproof.toml [classifier]` — the tool cannot
 infer leverage from spot legs alone.
+
+Margin rows split on economics: **zero amount means pure financing cost**
+(fee only, no disposal — like your `margin`/EUR/0.0000/fee rows); **non-zero
+means P&L settlement**, priced via linked trade, else fiat leg, else a loud
+error naming the refid. Instant-buy `spend`+`receive` pairs become ordinary
+trades (lone legs stay visible as cashflow, gains never invented);
+`adjustment` (delisting conversions) prices off its fiat leg; `earn` rewards
+and `invite bonus` book as income while allocation-style subtypes
+(`spottostaking`, `migration`, …) are internal moves, not income.
 
 Preview the number, then build the report bundle:
 

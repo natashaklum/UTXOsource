@@ -1,0 +1,2 @@
+txid,ordertxid,pair,time,type,ordertype,price,cost,fee,vol,margin,misc,ledgers
+T10,O10,XXBTZEUR,2023-03-10 10:00:00,sell,market,24000,2400,2,0.1,0.3,,"L302,L303"
