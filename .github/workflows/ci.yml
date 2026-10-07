@@ -55,6 +55,27 @@ jobs:
       - name: Regtest end-to-end
         run: pytest -m regtest -p no:cacheprovider --no-cov
 
+  debian-native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install (documented hashed flow, docs/USAGE.md)
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install "rp2 @ git+https://github.com/natashaklum/rp2.git@b1995bf1a07665035a46cf331cb06ccccd347ce2"
+          .venv/bin/pip install --require-hashes -r requirements-dev.txt
+          .venv/bin/pip install -e . --no-deps
+
+      - name: Test via native venv
+        run: .venv/bin/python -m pytest -q
+
   docker:
     runs-on: ubuntu-latest
     steps:

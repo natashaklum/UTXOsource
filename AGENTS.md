@@ -21,7 +21,10 @@ Full spec: `utxoproof-plan_v5.md`. Two repos:
   Iterating on both: `VIRTUAL_ENV=.venv uv pip install -e vendor/rp2`, run rp2
   checks from the submodule (`cd vendor/rp2 && ../.venv/bin/python -m pytest
   tests/test_plugin_country_be.py`), then commit+push in `vendor/rp2` first,
-  `git add vendor/rp2` here, and bump the pinned SHA in `pyproject.toml`.
+  `git add vendor/rp2` here, and bump the pinned SHA in `pyproject.toml`,
+  `requirements*.txt` (+ headers), `README.md` and `docs/USAGE.md`
+  (grep for the old SHA to catch them all), then regenerate the requirements
+  files if dependencies changed.
 
 ## Commands
 

@@ -20,7 +20,29 @@ command below is also documented with flags in `utxoproof --help`.
 
 ## 2. Installation
 
-Native (Python 3.11+, [uv](https://docs.astral.sh/uv/)):
+Two paths, same result. Pick the trust-maximal one unless you have a reason
+not to.
+
+**A. Debian-native (recommended for trust).** Everything from Debian's signed
+archive; hashes pinned for the rest:
+
+```bash
+sudo apt install python3 python3-venv python3-pip git
+git clone --recurse-submodules https://github.com/natashaklum/utxoproof
+cd utxoproof
+python3 -m venv .venv
+.venv/bin/pip install "rp2 @ git+https://github.com/natashaklum/rp2.git@b1995bf1a07665035a46cf331cb06ccccd347ce2"
+.venv/bin/pip install --require-hashes -r requirements.txt
+.venv/bin/pip install -e . --no-deps
+cp utxoproof.example.toml utxoproof.toml
+```
+
+The pinned git SHA *is* rp2's integrity (git URLs can't carry hashes, so it
+installs in its own step); every PyPI package is hash-checked. Contributors
+add `.[dev]` tooling via `requirements-dev.txt` the same way. Regenerate both
+files with `uv pip compile --generate-hashes` (see their headers).
+
+**B. uv (faster).** Same outcome, one tool doing resolution + install:
 
 ```bash
 git clone --recurse-submodules https://github.com/natashaklum/utxoproof
@@ -29,6 +51,10 @@ uv venv
 VIRTUAL_ENV=.venv uv pip install -e ".[dev]"
 cp utxoproof.example.toml utxoproof.toml
 ```
+
+uv is a single static binary outside the Debian archive — convenient and
+widely used, but a separate trust decision (see discussion in the project
+history). Either path gives you `.venv/bin/utxoproof`.
 
 The `.venv` lives inside the checkout on purpose: it is a disposable build
 artifact (gitignored, no financial data in it), not code you keep and not

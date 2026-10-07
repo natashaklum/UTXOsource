@@ -34,17 +34,30 @@ for what remains.
 
 ## Installation
 
-Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
+Requires Python 3.11+.
 
-Native:
+Debian-native (trust-maximal — everything from signed archives + hashes):
 
 ```bash
+sudo apt install python3 python3-venv python3-pip git
 git clone --recurse-submodules https://github.com/natashaklum/utxoproof
 cd utxoproof
-uv venv
-VIRTUAL_ENV=.venv uv pip install -e ".[dev]"
+python3 -m venv .venv
+.venv/bin/pip install "rp2 @ git+https://github.com/natashaklum/rp2.git@b1995bf1a07665035a46cf331cb06ccccd347ce2"
+.venv/bin/pip install --require-hashes -r requirements.txt
+.venv/bin/pip install -e . --no-deps
 cp utxoproof.example.toml utxoproof.toml  # then edit municipality rate etc.
 ```
+
+Faster alternative with [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv venv
+VIRTUAL_ENV=.venv uv pip install -e ".[dev]"
+```
+
+See the [Slowstart guide](docs/USAGE.md) for the full discussion of both
+paths (including why the git dependency installs separately).
 
 Docker (mainnet stack per `docker-compose.yml`; regtest dev stack in
 `docker-compose.regtest.yml`):
