@@ -35,6 +35,18 @@ artifact (gitignored, no financial data in it), not code you keep and not
 data you back up. Delete and recreate it any time with the two `uv` lines
 above. What matters is keeping the *data directory* (next section) elsewhere.
 
+Remote checkouts (sshfs etc.): the code works from a network mount, just
+slower — but keep **both** the venv and the data directory on a local disk.
+A venv is thousands of tiny files (painful over latency), and SQLite over
+sshfs risks database corruption (no real file locking). Example layout with
+a remote checkout:
+
+```bash
+uv venv ~/venvs/utxoproof
+VIRTUAL_ENV=~/venvs/utxoproof uv pip install -e ".[dev]"
+export UTXOPROOF_DATA_DIR=~/utxoproof-data   # local disk, always
+```
+
 Docker (runs the mainnet stack; regtest dev stack is `docker-compose.regtest.yml`):
 
 ```bash
