@@ -86,6 +86,16 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
     links: list[str] = []
 
+    # Receipt-date valuation for deposits, from the vendored price history
+    # (offline, deterministic).
+    from utxoproof.db import open_memory_db
+    from utxoproof.price_oracle import EURPriceOracle
+
+    _history_db = open_memory_db()
+    _history_oracle = EURPriceOracle(_history_db)
+    _history_oracle.load_csv(ROOT / "data" / "btc_eur_daily.csv", "BTC/EUR", "demo-seed")
+    demo_price_at = _history_oracle.get_btc_eur
+
     for demo in DEMOS:
         slug = demo.slug
         year = demo.year
@@ -106,7 +116,9 @@ def main() -> int:
                 writer.writerows(rows)
         else:
             csv_path = demo.csv_path
-        target = write_report(str(csv_path), year, out / slug, demo_notice=DEMO_NOTICE)
+        target = write_report(
+            str(csv_path), year, out / slug, demo_notice=DEMO_NOTICE, price_at=demo_price_at
+        )
         rel = target.relative_to(out)
         links.append(f'<li><a href="{rel}">{demo.title}</a></li>')
 
@@ -125,7 +137,14 @@ def main() -> int:
         ("kraken-2023", out / "kraken-2023.csv"),
         ("coinbase-2023", out / "coinbase-2023.csv"),
     ):
-        write_status_page(csv_path, demo_price, price_note, out / slug, demo_notice=DEMO_NOTICE)
+        write_status_page(
+            csv_path,
+            demo_price,
+            price_note,
+            out / slug,
+            demo_notice=DEMO_NOTICE,
+            price_at=demo_price_at,
+        )
         links.append(f'<li><a href="{slug}/status.html">Holdings status — {slug}</a></li>')
 
     # Privacy analysis over the shared sample graph (in-memory demo DB).
@@ -221,6 +240,7 @@ def main() -> int:
         ROOT / "tests" / "fixtures" / "manual_2023.csv",
         out / "alltime",
         demo_notice=DEMO_NOTICE,
+        price_at=demo_price_at,
     )
     links.append('<li><a href="alltime/summary.html">All-time summary (manual CSV)</a></li>')
 

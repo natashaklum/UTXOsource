@@ -19,7 +19,7 @@ import jinja2
 from utxoproof import __version__
 from utxoproof.advisory import UTXOAdvisory, portfolio_summary
 from utxoproof.belgian_tax import COMMUNAL_SURCHARGE_DEFAULT, apply_belgian_tax
-from utxoproof.cli import compute_details
+from utxoproof.cli import PriceAt, compute_details
 from utxoproof.config import ClassifierConfig
 from utxoproof.portfolio import Portfolio
 
@@ -68,17 +68,18 @@ def build_report(
     year: int,
     communal_rate: Decimal = COMMUNAL_SURCHARGE_DEFAULT,
     classifier_cfg: ClassifierConfig | None = None,
+    price_at: PriceAt | None = None,
 ) -> TaxReport:
     """Build report data with per-disposal Belgian tax + classification."""
     from utxoproof.classifier import BelgianClassifier, signals_from_csv
 
     cfg = classifier_cfg or ClassifierConfig()
-    signals = signals_from_csv(csv_path, year, cfg)
+    signals = signals_from_csv(csv_path, year, cfg, price_at)
     tax_class, rationale = BelgianClassifier(
         cfg.speculator_threshold, cfg.passive_threshold
     ).classify(signals)
     classification = tax_class.value
-    details = compute_details(csv_path, year)
+    details = compute_details(csv_path, year, price_at)
     rows = []
     for d in details["disposals"]:
         tax = apply_belgian_tax(d["gain_eur"], classification, communal_rate)
@@ -243,13 +244,17 @@ def write_report(
     communal_rate: Decimal = COMMUNAL_SURCHARGE_DEFAULT,
     classifier_cfg: ClassifierConfig | None = None,
     demo_notice: str = "",
+    price_at: PriceAt | None = None,
 ) -> Path:
     """Build + render + write ``report.html`` into ``out_dir``. Returns the path."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     target = out / "report.html"
     target.write_text(
-        render_report(build_report(csv_path, year, communal_rate, classifier_cfg), demo_notice),
+        render_report(
+            build_report(csv_path, year, communal_rate, classifier_cfg, price_at=price_at),
+            demo_notice,
+        ),
         encoding="utf-8",
     )
     return target
@@ -307,12 +312,15 @@ def build_descriptors_context() -> dict[str, object]:
 
 
 def build_status_context(
-    csv_path: str | Path, price_eur: Decimal, price_note: str
+    csv_path: str | Path,
+    price_eur: Decimal,
+    price_note: str,
+    price_at: PriceAt | None = None,
 ) -> dict[str, object]:
     """Preformatted context dict for the status section."""
     from utxoproof.cli import compute_status
 
-    status = compute_status(csv_path, price_eur)
+    status = compute_status(csv_path, price_eur, price_at)
     return {
         "as_of": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M UTC"),
         "price_eur": f"{price_eur:.2f}",
@@ -331,6 +339,7 @@ def write_status_page(
     price_note: str,
     out_dir: str | Path,
     demo_notice: str = "",
+    price_at: PriceAt | None = None,
 ) -> Path:
     """Render the holdings status page into ``out_dir``."""
     out = Path(out_dir)
@@ -340,7 +349,7 @@ def write_status_page(
         _env()
         .get_template("status.html.j2")
         .render(
-            status=build_status_context(csv_path, price_eur, price_note),
+            status=build_status_context(csv_path, price_eur, price_note, price_at),
             intro=INTROS["status"],
             disclaimer=DISCLAIMER,
             demo_notice=demo_notice,
@@ -604,11 +613,13 @@ def _attachment_rows(
     return rows
 
 
-def build_alltime_context(csv_path: str | Path) -> dict[str, object]:
+def build_alltime_context(
+    csv_path: str | Path, price_at: PriceAt | None = None
+) -> dict[str, object]:
     """Preformatted context dict for the all-time section."""
     from utxoproof.cli import compute_alltime
 
-    result = compute_alltime(csv_path)
+    result = compute_alltime(csv_path, price_at)
     per_year = result["per_year"]
     inventory = result["inventory"]
     total = sum((row["gain_eur"] for row in per_year), Decimal("0"))
@@ -629,7 +640,12 @@ def build_alltime_context(csv_path: str | Path) -> dict[str, object]:
     }
 
 
-def write_alltime_page(csv_path: str | Path, out_dir: str | Path, demo_notice: str = "") -> Path:
+def write_alltime_page(
+    csv_path: str | Path,
+    out_dir: str | Path,
+    demo_notice: str = "",
+    price_at: PriceAt | None = None,
+) -> Path:
     """Render the all-time realized-gains summary into ``out_dir``."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -638,7 +654,7 @@ def write_alltime_page(csv_path: str | Path, out_dir: str | Path, demo_notice: s
         _env()
         .get_template("alltime.html.j2")
         .render(
-            alltime=build_alltime_context(csv_path),
+            alltime=build_alltime_context(csv_path, price_at),
             intro=INTROS["alltime"],
             disclaimer=DISCLAIMER,
             demo_notice=demo_notice,
@@ -823,7 +839,7 @@ def write_full_report(
     """Compose every section into one printable ``fullreport.html``."""
     from utxoproof.advisory import analyze_wallet
 
-    report = build_report(csv_path, year, communal_rate, classifier_cfg)
+    report = build_report(csv_path, year, communal_rate, classifier_cfg, price_at=price_at)
     advisories = analyze_wallet(db, price_at, current_price_eur, as_of)
     sections: list[dict[str, str]] = [
         {"id": "tax", "title": "Tax report"},
@@ -868,9 +884,9 @@ def write_full_report(
             sections=sections,
             tax=build_tax_context(report),
             tax_intro=INTROS["tax"],
-            status=build_status_context(csv_path, current_price_eur, price_note),
+            status=build_status_context(csv_path, current_price_eur, price_note, price_at),
             status_intro=INTROS["status"],
-            alltime=build_alltime_context(csv_path),
+            alltime=build_alltime_context(csv_path, price_at),
             alltime_intro=INTROS["alltime"],
             privacy=build_privacy_context(db),
             privacy_intro=INTROS["privacy"],

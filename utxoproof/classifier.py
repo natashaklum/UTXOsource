@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import datetime
+from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
@@ -121,7 +122,10 @@ class _FifoLot:
 
 
 def signals_from_csv(
-    csv_path: str | Path, year: int, classifier: ClassifierConfig | None = None
+    csv_path: str | Path,
+    year: int,
+    classifier: ClassifierConfig | None = None,
+    price_at: Callable[[datetime.date], Decimal] | None = None,
 ) -> BelgianClassificationSignals:
     """Derive classification signals from a manual CSV for ``year``.
 
@@ -158,6 +162,13 @@ def signals_from_csv(
                 if day.year == year:
                     acquisitions += 1
                     buy_dates.append(day)
+            elif side == "DEPOSIT":
+                from utxoproof.cli import _deposit_unit_price
+
+                unit = _deposit_unit_price(str(row["date"]), price, price_at)
+                running_btc += btc
+                running_cost += btc * unit + fee
+                lots.append(_FifoLot(btc, day))
             elif side == "SELL":
                 need = btc
                 while need > 0 and lots:

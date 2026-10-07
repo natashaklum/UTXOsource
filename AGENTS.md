@@ -91,6 +91,9 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   `exchange.ExchangeTx` (Bisq defaults non_kyc). Banks: `banks.py` profile
   engine (headers UNVERIFIED, alias-driven); `matching.py` fiat-leg matcher.
   All non-Kraken shapes are best-effort fixtures for later correction.
+- Deposits enter the moving-average pool at stated or receipt-date price
+  (`--price-history` CSV, else a loud error — never silent zero).
+  `utxoproof check` diagnoses pool coverage without crashing.
 - Regtest stack: `docker-compose.regtest.yml` (bitcoind only; no docker on dev
   boxes, so daemon runs are CI-only).
 - SQLite schema (`utxoproof/schema.sql`) is created whole (Sec. 8); schema changes

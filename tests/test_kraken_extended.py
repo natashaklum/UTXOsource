@@ -86,3 +86,110 @@ def test_extended_manual_rows() -> None:
     assert ("BUY", "ROLLOVER") not in kinds  # no rollover in this fixture
     assert ("BUY", "BUY") in kinds  # instant buy
     assert ("SELL", "ADJUSTMENT") in kinds
+
+
+def test_user_2017_deposit_shape() -> None:
+    from utxoproof.kraken_csv import parse_kraken_ledgers
+
+    txs = parse_kraken_ledgers(Path(__file__).parent / "fixtures" / "kraken_deposit_2017.csv")
+    assert len(txs) == 1
+    deposit = txs[0]
+    assert (deposit.kind, deposit.btc, deposit.wallet, deposit.subclass) == (
+        "DEPOSIT",
+        Decimal("0.01384720"),
+        "spot / main",
+        "crypto",
+    )
+    assert deposit.source_type == "exchange_purchase"
+
+
+def test_diagnose_names_shortfall_and_cover() -> None:
+    from utxoproof.cli import diagnose
+
+    result = diagnose(Path(__file__).parent / "fixtures" / "margin_short.csv")
+    assert result["shortfalls"] == 1
+    row = result["disposals"][0]
+    assert row["shortfall_btc"] == Decimal("0.0612837123")
+    assert row["buys_btc"] == Decimal("0") and row["deposits_btc"] == Decimal("0")
+
+
+def test_deposit_covers_later_disposal(tmp_path: Path) -> None:
+    """User story: coins deposited (not bought) fund a later margin close."""
+    import csv
+
+    from utxoproof.cli import compute_details, diagnose
+    from utxoproof.kraken_csv import parse_kraken_ledgers
+
+    txs = parse_kraken_ledgers(Path(__file__).parent / "fixtures" / "kraken_deposit_2017.csv")
+    assert txs[0].kind == "DEPOSIT"
+    rows = [
+        {
+            "date": "2017-10-12",
+            "side": "DEPOSIT",
+            "kind": "DEPOSIT",
+            "btc": "0.01384720",
+            "eur_per_btc": "0",
+            "fee_eur": "0",
+        },
+        {
+            "date": "2023-03-20",
+            "side": "SELL",
+            "kind": "MARGIN",
+            "btc": "0.01000000",
+            "eur_per_btc": "25000",
+            "fee_eur": "5",
+        },
+    ]
+    csv_path = tmp_path / "dep.csv"
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f, fieldnames=["date", "side", "kind", "btc", "eur_per_btc", "fee_eur"]
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+
+    def price_at(_day: object) -> Decimal:
+        return Decimal("5000")
+
+    result = compute_details(csv_path, 2023, price_at)
+    # cost 0.01*5000=50 of 0.0138472*5000=69.24 pool; proceeds 250-5=245
+    assert result["gain_loss_eur"] == Decimal("195")
+    diagnosis = diagnose(csv_path, price_at)
+    assert diagnosis["shortfalls"] == 0
+
+
+def test_cli_check_and_price_history_flag(tmp_path: Path, capsys) -> None:
+    from utxoproof.cli import main
+
+    fixture = Path(__file__).parent / "fixtures" / "margin_short.csv"
+    assert main(["check", "--input", str(fixture)]) == 0
+    out = capsys.readouterr().out
+    assert "SHORTFALL 0.0612837123" in out and "shortfalls: 1" in out
+
+    prices = tmp_path / "prices.csv"
+    prices.write_text("date,close_eur\n2023-02-01,21000\n", encoding="utf-8")
+    marvel = tmp_path / "m.csv"
+    marvel.write_text(
+        "date,side,kind,btc,eur_per_btc,fee_eur\n"
+        "2023-02-01,DEPOSIT,DEPOSIT,0.5,0,0\n"
+        "2023-03-01,SELL,SELL,0.25,24000,0\n",
+        encoding="utf-8",
+    )
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError, match="--price-history"):
+        main(["compute", "--input", str(marvel), "--year", "2023"])
+    assert (
+        main(
+            [
+                "compute",
+                "--input",
+                str(marvel),
+                "--year",
+                "2023",
+                "--price-history",
+                str(prices),
+            ]
+        )
+        == 0
+    )

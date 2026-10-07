@@ -146,6 +146,12 @@ produce bank-row CSVs for fiat-leg review, not trade rows). `--kyc` overrides
 the exchange default. All non-Kraken shapes are best-effort — check the first
 converted rows by eye before trusting a full year.
 
+Deposits (transfers-in, staking rewards, exchange credits) enter the cost
+pool at receipt-date value: stated price first, otherwise `--price-history`
+with a `(date,close_eur)` history file (e.g. `data/btc_eur_daily.csv`).
+Without a price source for a priceless deposit you get an error naming the
+date, never a silent zero.
+
 ### Kraken: ledgers, trades, margin
 
 Kraken exports two files that belong together:
@@ -266,6 +272,10 @@ by re-hashing against the manifest.
 
 ## 8. Troubleshooting
 
+- `utxoproof check --input manual.csv`: start here when numbers look wrong.
+  It walks the file like the pool does but never crashes — each disposal is
+  annotated with pool coverage and cumulative buys vs deposits, so shortfalls
+  show exactly where coverage ran out and what kind of inflow is missing.
 - `SELL with empty inventory`: your CSV sells more than it bought (check date
   order and missed deposits). A `MARGIN` disposal on empty inventory is
   usually a **short sale** (sell first, cover later) or an opening leg outside

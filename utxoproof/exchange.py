@@ -15,7 +15,7 @@ from decimal import Decimal
 @dataclass
 class ExchangeTx:
     date: datetime.date
-    kind: str  # BUY | SELL | WITHDRAWAL | DEPOSIT
+    kind: str  # BUY | SELL | MARGIN | ROLLOVER | ADJUSTMENT | WITHDRAWAL | DEPOSIT
     btc: Decimal
     eur_per_btc: Decimal
     fee_eur: Decimal
@@ -40,7 +40,8 @@ def to_manual_csv_rows(txs: list[ExchangeTx]) -> list[dict[str, str]]:
 
     BUY/SELL pass through; MARGIN settles like a SELL (taxable disposal);
     ROLLOVER becomes a zero-BTC BUY carrying just the financing fee into the
-    cost pool. The original ``kind`` is preserved in its own column (compute
+    cost pool; DEPOSIT rows pass through for receipt-date valuation at compute
+    time. The original ``kind`` is preserved in its own column (compute
     ignores extra columns) so reports can show margin lines separately.
     """
     rows = []
@@ -56,7 +57,7 @@ def to_manual_csv_rows(txs: list[ExchangeTx]) -> list[dict[str, str]]:
             side, btc = "SELL", tx.btc
         elif tx.kind == "ROLLOVER":
             side, btc = "BUY", Decimal("0")
-        elif tx.kind in ("BUY", "SELL"):
+        elif tx.kind in ("BUY", "SELL", "DEPOSIT"):
             side, btc = tx.kind, tx.btc
         else:
             continue

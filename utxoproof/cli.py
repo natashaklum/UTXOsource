@@ -77,12 +77,35 @@ def _empty_inventory_error(row: dict[str, str]) -> ValueError:
     return ValueError(f"{kind} of {row.get('btc')} BTC on {date} with empty inventory ({hint})")
 
 
-def compute_details(csv_path: str | Path, year: int) -> ComputeResult:
+PriceAt = Callable[[datetime.date], Decimal]
+"""Receipt-date price lookup (oracle, vendored history, or test constant)."""
+
+
+def _deposit_unit_price(row_date: str, row_price: Decimal, price_at: PriceAt | None) -> Decimal:
+    """Cost basis unit price for a DEPOSIT row.
+
+    Stated price wins; otherwise the receipt-date lookup; otherwise an
+    actionable error (guessing would poison every later gain).
+    """
+    if row_price > 0:
+        return row_price
+    if price_at is not None:
+        return price_at(datetime.date.fromisoformat(str(row_date)[:10]))
+    raise ValueError(
+        f"DEPOSIT of unknown value on {row_date}: supply --price-history "
+        "(e.g. data/btc_eur_daily.csv) so receipt-date cost can be valued"
+    )
+
+
+def compute_details(
+    csv_path: str | Path, year: int, price_at: PriceAt | None = None
+) -> ComputeResult:
     """Per-disposal moving-average detail for ``year`` plus the yearly total.
 
     Returns ``{"disposals": [...], "gain_loss_eur": Decimal}`` where each
     disposal has ``date, btc, eur_per_btc, proceeds_eur, cost_basis_eur,
     gain_eur``. Buy fees join the cost pool, sell fees reduce proceeds.
+    DEPOSIT rows enter the pool at stated or receipt-date price.
     """
     total_btc = Decimal("0")
     total_cost = Decimal("0")
@@ -99,6 +122,10 @@ def compute_details(csv_path: str | Path, year: int) -> ComputeResult:
             if side == "BUY":
                 total_btc += btc
                 total_cost += btc * price + fee
+            elif side == "DEPOSIT":
+                unit = _deposit_unit_price(str(row["date"]), price, price_at)
+                total_btc += btc
+                total_cost += btc * unit + fee
             elif side == "SELL":
                 if total_btc <= Decimal("0"):
                     raise _empty_inventory_error(row)
@@ -126,17 +153,120 @@ def compute_details(csv_path: str | Path, year: int) -> ComputeResult:
     return {"disposals": disposals, "gain_loss_eur": realised_gain}
 
 
-def compute_year(csv_path: str | Path, year: int) -> dict[str, Decimal]:
+def diagnose(csv_path: str | Path, price_at: PriceAt | None = None) -> DiagResult:
+    """Walk the file like the pool does, but never crash: every disposal is
+    annotated with pool coverage and cumulative inflow by kind. Shortfalls
+    (pool < disposal) name the likely cause: missing buys, missing deposit
+    valuation, or a true short position."""
+    pool_btc = Decimal("0")
+    pool_cost = Decimal("0")
+    buys_btc = Decimal("0")
+    deposits_btc = Decimal("0")
+    rows: list[DiagDisposal] = []
+    shortfalls = 0
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            side = str(row["side"]).strip().upper()
+            btc = Decimal(str(row["btc"]))
+            price = Decimal(str(row["eur_per_btc"]))
+            fee = Decimal(str(row.get("fee_eur") or "0"))
+            if side == "BUY":
+                pool_btc += btc
+                pool_cost += btc * price + fee
+                buys_btc += btc
+            elif side == "DEPOSIT":
+                unit = _deposit_unit_price(str(row["date"]), price, price_at)
+                pool_btc += btc
+                pool_cost += btc * unit + fee
+                deposits_btc += btc
+            elif side == "SELL":
+                shortfall = max(Decimal("0"), btc - pool_btc)
+                if shortfall > 0:
+                    shortfalls += 1
+                covered = min(btc, pool_btc)
+                basis = pool_cost / pool_btc * covered if pool_btc > 0 else Decimal("0")
+                pool_btc -= covered
+                pool_cost -= basis
+                rows.append(
+                    {
+                        "date": str(row["date"]),
+                        "kind": str(row.get("kind") or side),
+                        "btc": btc,
+                        "pool_btc": pool_btc + covered,
+                        "shortfall_btc": shortfall,
+                        "buys_btc": buys_btc,
+                        "deposits_btc": deposits_btc,
+                    }
+                )
+    return {"disposals": rows, "shortfalls": shortfalls}
+
+
+def load_price_history(path: str | Path | None) -> PriceAt | None:
+    """Receipt-date price lookup seeded from a (date, close) history CSV.
+
+    Offline and deterministic; None means deposits must carry their own price.
+    """
+    if path is None:
+        return None
+    from utxoproof.db import open_memory_db
+    from utxoproof.price_oracle import EURPriceOracle
+
+    oracle = EURPriceOracle(open_memory_db())
+    oracle.load_csv(path, "BTC/EUR", "price-history")
+    return oracle.get_btc_eur
+
+
+def _add_price_history_arg(sub: argparse.ArgumentParser) -> None:
+    sub.add_argument(
+        "--price-history",
+        default=None,
+        help="CSV (date,close_eur) for receipt-date deposit valuation",
+    )
+
+
+class DiagDisposal(TypedDict):
+    date: str
+    kind: str
+    btc: Decimal
+    pool_btc: Decimal
+    shortfall_btc: Decimal
+    buys_btc: Decimal
+    deposits_btc: Decimal
+
+
+class DiagResult(TypedDict):
+    disposals: list[DiagDisposal]
+    shortfalls: int
+
+
+def print_diagnosis(result: DiagResult) -> int:
+    """Human-readable diagnose() output. Returns shortfall count."""
+    for row in result["disposals"]:
+        if row["shortfall_btc"]:
+            flag = (
+                f"SHORTFALL {row['shortfall_btc']} BTC (pool had {row['pool_btc']}, "
+                f"{row['buys_btc']} bought / {row['deposits_btc']} deposited)"
+            )
+        else:
+            flag = "ok"
+        print(f"{row['date']} {row['kind']} {row['btc']} BTC -> {flag}")
+    print(f"shortfalls: {result['shortfalls']}")
+    return result["shortfalls"]
+
+
+def compute_year(
+    csv_path: str | Path, year: int, price_at: PriceAt | None = None
+) -> dict[str, Decimal]:
     """Compute realised gain/loss for ``year`` from a simple manual CSV.
 
     CSV columns: ``date,side,btc,eur_per_btc,fee_eur`` where ``date`` is
     ``YYYY-MM-DD`` and ``side`` is ``BUY`` or ``SELL``. Moving-average cost
     basis; buy fees join the cost pool, sell fees reduce proceeds.
     """
-    return {"gain_loss_eur": compute_details(csv_path, year)["gain_loss_eur"]}
+    return {"gain_loss_eur": compute_details(csv_path, year, price_at)["gain_loss_eur"]}
 
 
-def compute_inventory(csv_path: str | Path) -> Inventory:
+def compute_inventory(csv_path: str | Path, price_at: PriceAt | None = None) -> Inventory:
     """Whole-file moving-average inventory (BTC + cost basis, no valuation)."""
     total_btc = Decimal("0")
     total_cost = Decimal("0")
@@ -149,6 +279,10 @@ def compute_inventory(csv_path: str | Path) -> Inventory:
             if side == "BUY":
                 total_btc += btc
                 total_cost += btc * unit + fee
+            elif side == "DEPOSIT":
+                deposit_unit = _deposit_unit_price(str(row["date"]), unit, price_at)
+                total_btc += btc
+                total_cost += btc * deposit_unit + fee
             elif side == "SELL":
                 if total_btc <= Decimal("0"):
                     raise _empty_inventory_error(row)
@@ -160,13 +294,15 @@ def compute_inventory(csv_path: str | Path) -> Inventory:
     return {"btc": total_btc, "cost_eur": total_cost}
 
 
-def compute_status(csv_path: str | Path, price_eur: Decimal) -> dict[str, Decimal]:
+def compute_status(
+    csv_path: str | Path, price_eur: Decimal, price_at: PriceAt | None = None
+) -> dict[str, Decimal]:
     """Current holdings snapshot at ``price_eur`` (whole-file inventory).
 
     Returns ``btc, cost_eur, avg_cost_eur, value_eur, unrealized_eur``.
     Same moving-average pool as ``compute_details`` (fees included).
     """
-    inventory = compute_inventory(csv_path)
+    inventory = compute_inventory(csv_path, price_at)
     total_btc = inventory["btc"]
     total_cost = inventory["cost_eur"]
     value = total_btc * price_eur
@@ -179,7 +315,7 @@ def compute_status(csv_path: str | Path, price_eur: Decimal) -> dict[str, Decima
     }
 
 
-def compute_alltime(csv_path: str | Path) -> AlltimeResult:
+def compute_alltime(csv_path: str | Path, price_at: PriceAt | None = None) -> AlltimeResult:
     """Per-year gains plus remaining inventory across the whole file."""
     years: set[int] = set()
     with open(csv_path, newline="", encoding="utf-8") as f:
@@ -187,10 +323,10 @@ def compute_alltime(csv_path: str | Path) -> AlltimeResult:
             years.add(int(str(row["date"])[:4]))
     per_year: list[YearlyGain] = []
     for year in sorted(years):
-        details = compute_details(csv_path, year)
+        details = compute_details(csv_path, year, price_at)
         gain = details["gain_loss_eur"]
         per_year.append({"year": year, "gain_eur": gain, "disposals": len(details["disposals"])})
-    inventory = compute_inventory(csv_path)
+    inventory = compute_inventory(csv_path, price_at)
     return {"per_year": per_year, "inventory": inventory}
 
 
@@ -208,6 +344,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Decimal,
         help="Communal surcharge rate (default 0.07)",
     )
+    _add_price_history_arg(compute)
     impi = sub.add_parser("import", help="Convert an exchange export to manual CSV")
     impi.add_argument("--file", required=True, help="Source file to import")
     impi.add_argument(
@@ -249,6 +386,7 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--alltime", action="store_true", help="All-time summary instead")
     report.add_argument("--out", required=True, help="Output directory")
     report.add_argument("--config", default=None, help="utxoproof.toml path")
+    _add_price_history_arg(report)
     report.add_argument("--db", default=None, help="SQLite DB (full report + oracle)")
     report.add_argument("--evidence-dir", default=None, help="Evidence root")
     report.add_argument("--full", action="store_true", help="Compose fullreport.html too")
@@ -293,6 +431,10 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--price", type=Decimal, default=None, help="BTC/EUR price override")
     status.add_argument("--db", default=None, help="SQLite DB (default: <data-dir>/utxoproof.db)")
     status.add_argument("--out", default=None, help="Output directory for status.html")
+    _add_price_history_arg(status)
+    check = sub.add_parser("check", help="Diagnose pool coverage without crashing")
+    check.add_argument("--input", required=True, help="Manual CSV path")
+    _add_price_history_arg(check)
     privacy = sub.add_parser("privacy", help="KYC analysis and mixing events")
     privacy.add_argument("--db", default=None, help="SQLite DB (default: <data-dir>/utxoproof.db)")
     privacy.add_argument("--out", default=None, help="Output directory for privacy.html")
@@ -337,23 +479,22 @@ def _write_full_from_args(args: argparse.Namespace, communal: Decimal, config: C
     from utxoproof.reports import write_full_report
 
     db = _open_db(str(db_path(args)))
+    history = load_price_history(args.price_history)
+    if history is None:
+        raise ValueError("report --full needs --price-history for acquisition pricing")
     price, note = _resolve_price(args.price, args)
     as_of = (
         datetime.date.fromisoformat(args.as_of)
         if args.as_of
         else datetime.datetime.now(datetime.UTC).date()
     )
-
-    def curve(day: datetime.date) -> Decimal:
-        return price
-
     targets = _parse_utxo_targets(args, db)
     return write_full_report(
         db=db,
         csv_path=args.input,
         year=args.year,
         out_dir=args.out,
-        price_at=curve,
+        price_at=history,
         current_price_eur=price,
         price_note=note,
         as_of=as_of,
@@ -425,7 +566,8 @@ def _run_status(args: argparse.Namespace) -> int:
     from utxoproof.reports import write_status_page
 
     price, note = _resolve_price(args.price, args)
-    status = compute_status(args.input, price)
+    history = load_price_history(args.price_history)
+    status = compute_status(args.input, price, history)
     print(f"holdings_btc: {status['btc']:.8f}")
     print(f"cost_basis_eur: {status['cost_eur']:.2f}")
     print(f"avg_cost_eur: {status['avg_cost_eur']:.2f}")
@@ -433,7 +575,7 @@ def _run_status(args: argparse.Namespace) -> int:
     print(f"value_eur: {status['value_eur']:.2f}")
     print(f"unrealized_eur: {status['unrealized_eur']:.2f}")
     if args.out:
-        target = write_status_page(args.input, price, note, args.out)
+        target = write_status_page(args.input, price, note, args.out, price_at=history)
         print(f"wrote {target}")
     return 0
 
@@ -638,7 +780,7 @@ def _run_import(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "compute":
-        result = compute_year(args.input, args.year)
+        result = compute_year(args.input, args.year, load_price_history(args.price_history))
         gain = result["gain_loss_eur"]
         tax = apply_belgian_tax(gain, "goede_huisvader", args.communal_rate)
         print(f"year: {args.year}")
@@ -646,6 +788,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"tax_eur: {tax['tax_eur']:.2f}")
         print(f"communal_surcharge_eur: {tax['communal_surcharge_eur']:.2f}")
         print(f"total_eur: {tax['total_eur']:.2f}")
+        return 0
+    if args.command == "check":
+        diagnosis = diagnose(args.input, load_price_history(args.price_history))
+        print_diagnosis(diagnosis)
         return 0
     if args.command == "import":
         return _run_import(args)
@@ -660,13 +806,21 @@ def main(argv: list[str] | None = None) -> int:
             if args.communal_rate is not None
             else config.taxpayer.communal_surcharge_rate
         )
+        history = load_price_history(args.price_history)
         if args.alltime:
-            target = write_alltime_page(args.input, args.out)
+            target = write_alltime_page(args.input, args.out, price_at=history)
             print(f"wrote {target}")
             return 0
         if args.year is None:
             raise ValueError("report needs --year Y or --alltime")
-        target = write_report(args.input, args.year, args.out, communal, config.classifier)
+        target = write_report(
+            args.input,
+            args.year,
+            args.out,
+            communal,
+            config.classifier,
+            price_at=load_price_history(args.price_history),
+        )
         print(f"wrote {target}")
         if args.full:
             full = _write_full_from_args(args, communal, config)

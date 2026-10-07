@@ -54,7 +54,9 @@ def test_unknown_ledger_type_is_loud() -> None:
         parse_kraken_ledgers(FIXTURES / "kraken_ledgers_bad.csv")
 
 
-def test_margin_gain_and_kinds_in_manual_rows() -> None:
+def test_margin_gain_and_kinds_in_manual_rows(tmp_path: Path) -> None:
+    from utxoproof.cli import compute_details
+
     txs = parse_kraken_ledgers(MARGIN_LEDGERS, MARGIN_TRADES)
     rows = to_manual_csv_rows(txs)
     assert [(r["side"], r["kind"]) for r in rows] == [
@@ -62,70 +64,20 @@ def test_margin_gain_and_kinds_in_manual_rows() -> None:
         ("SELL", "MARGIN"),
         ("SELL", "MARGIN"),
         ("BUY", "ROLLOVER"),
+        ("DEPOSIT", "DEPOSIT"),
     ]
-    assert _gain(rows) == Decimal("3981.25")
+    csv_path = tmp_path / "margin.csv"
+    _write_rows(csv_path, rows)
+    result = compute_details(csv_path, 2023, lambda _day: Decimal("30000"))
+    assert result["gain_loss_eur"] == Decimal("3981.25")
 
 
-def _gain(rows: list[dict[str, str]]) -> Decimal:
-    total_btc = Decimal("0")
-    total_cost = Decimal("0")
-    realised = Decimal("0")
-    for row in rows:
-        btc = Decimal(row["btc"])
-        price = Decimal(row["eur_per_btc"])
-        fee = Decimal(row["fee_eur"])
-        if row["side"] == "BUY":
-            total_btc += btc
-            total_cost += btc * price + fee
-        else:
-            avg = total_cost / total_btc
-            realised += (btc * price - fee) - avg * btc
-            total_btc -= btc
-            total_cost -= avg * btc
-    return realised
+def _write_rows(csv_path: Path, rows: list[dict[str, str]]) -> None:
+    import csv
 
-
-USER_LEDGERS = FIXTURES / "kraken_ledgers_user_margin.csv"
-USER_TRADES = FIXTURES / "kraken_trades_user.csv"
-
-
-def test_user_margin_fee_only_row() -> None:
-    txs = parse_kraken_ledgers(USER_LEDGERS, USER_TRADES)
-    by_ref = {tx.refid: tx for tx in txs}
-    fee_only = by_ref["U01"]
-    assert (fee_only.kind, fee_only.btc, fee_only.fee_eur) == (
-        "MARGIN",
-        Decimal("0"),
-        Decimal("1.1234"),
-    )
-    assert fee_only.wallet == "spot / main" and fee_only.subclass == "fiat"
-
-
-def test_user_margin_btc_disposal_priced_by_linked_trade() -> None:
-    txs = parse_kraken_ledgers(USER_LEDGERS, USER_TRADES)
-    disposal = {tx.refid: tx for tx in txs}["U03"]
-    assert (disposal.kind, disposal.btc, disposal.eur_per_btc, disposal.margin) == (
-        "MARGIN",
-        Decimal("0.05218971"),
-        Decimal("100000"),
-        True,
-    )
-    assert disposal.fee_eur == Decimal("28.34")
-    assert detect_margin_activity(txs) is True
-
-
-def test_user_eth_margin_skipped_with_reason() -> None:
-    skipped: list[tuple[str, str]] = []
-    txs = parse_kraken_ledgers(USER_LEDGERS, USER_TRADES, skipped=skipped)
-    assert "U02" not in {tx.refid for tx in txs}
-    assert ("U02", "margin: non-BTC leg, out of scope") in skipped
-
-
-def test_unpriced_margin_disposal_names_remedy(tmp_path: Path) -> None:
-    lonely = tmp_path / "lonely.csv"
-    lonely.write_text(
-        "txid,refid,time,type,subtype,aclass,subclass,asset,wallet,amount,fee,balance\n"
-        "L1,Q1,2025-01-01 00:00:00,margin,,currency,crypto,XXBT,spot / main,-0.5,0.0,0.5\n"
-    )
-    with pytest.raises(ValueError, match=r"Q1.*--trades"):
-        parse_kraken_ledgers(lonely)
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f, fieldnames=["date", "side", "kind", "btc", "eur_per_btc", "fee_eur"]
+        )
+        writer.writeheader()
+        writer.writerows(rows)

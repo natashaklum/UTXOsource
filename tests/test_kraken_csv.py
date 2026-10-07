@@ -3,7 +3,7 @@
 from decimal import Decimal
 from pathlib import Path
 
-from utxoproof.cli import compute_year
+from utxoproof.cli import compute_details
 from utxoproof.kraken_csv import parse_kraken_ledgers, to_manual_csv_rows
 
 FIXTURE = Path(__file__).parent / "fixtures" / "kraken_ledgers_2023.csv"
@@ -39,30 +39,21 @@ def test_skips_non_btc_and_keeps_cashflow_kinds() -> None:
     assert by_ref["R7"].kind == "DEPOSIT"
 
 
-def test_kraken_to_compute_end_to_end() -> None:
+def test_kraken_to_compute_end_to_end(tmp_path: Path) -> None:
     # R1 buy 1.0 @20000+10 | R2 sell 0.5 @25000-5 -> gain 2490
     # R3 buy 0.25 @24000   | R4 sell 0.25 @23000   -> gain 415
+    # R7 deposit 0.05 (valued at receipt via price_at, no sale after)
+    import csv
+
     rows = to_manual_csv_rows(parse_kraken_ledgers(FIXTURE))
-    assert len(rows) == 4  # withdrawals/deposits excluded
-    assert compute_year.__name__ == "compute_year"
-    gain = _gain_from_rows(rows)
-    assert gain == Decimal("2905")
-
-
-def _gain_from_rows(rows: list[dict[str, str]]) -> Decimal:
-    total_btc = Decimal("0")
-    total_cost = Decimal("0")
-    realised = Decimal("0")
-    for row in rows:
-        btc = Decimal(row["btc"])
-        price = Decimal(row["eur_per_btc"])
-        fee = Decimal(row["fee_eur"])
-        if row["side"] == "BUY":
-            total_btc += btc
-            total_cost += btc * price + fee
-        else:
-            avg = total_cost / total_btc
-            realised += (btc * price - fee) - avg * btc
-            total_btc -= btc
-            total_cost -= avg * btc
-    return realised
+    assert len(rows) == 5
+    assert rows[-1]["side"] == "DEPOSIT"
+    csv_path = tmp_path / "kraken.csv"
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f, fieldnames=["date", "side", "kind", "btc", "eur_per_btc", "fee_eur"]
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+    result = compute_details(csv_path, 2023, lambda _day: Decimal("30000"))
+    assert result["gain_loss_eur"] == Decimal("2905")

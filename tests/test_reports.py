@@ -46,7 +46,7 @@ def test_kraken_report_end_to_end(tmp_path: Path) -> None:
         )
         writer.writeheader()
         writer.writerows(rows)
-    report = build_report(csv_path, 2023)
+    report = build_report(csv_path, 2023, price_at=lambda _day: Decimal("30000"))
     assert report.gain_eur == Decimal("2905")
     html = render_report(report)
     assert "2905.00" in html and "958.65" in html
@@ -182,6 +182,11 @@ def test_cli_full_report(tmp_path: Path) -> None:
     from utxoproof.cli import main
     from utxoproof.kyc import create_sample_graph
 
+    prices = tmp_path / "prices.csv"
+    prices.write_text(
+        "date,close_eur\n2023-01-01,20000\n2023-01-02,20000\n2023-02-01,25000\n2023-03-01,30000\n",
+        encoding="utf-8",
+    )
     db_path = tmp_path / "full.db"
     dest = sqlite3.connect(str(db_path))
     create_sample_graph().backup(dest)
@@ -207,6 +212,8 @@ def test_cli_full_report(tmp_path: Path) -> None:
                 "--utxo",
                 "D:0",
                 "--no-zip",
+                "--price-history",
+                str(prices),
             ]
         )
         == 0
