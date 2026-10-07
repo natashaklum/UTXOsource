@@ -148,7 +148,8 @@ converted rows by eye before trusting a full year.
 
 Deposits (transfers-in, staking rewards, exchange credits) enter the cost
 pool at receipt-date value: stated price first, otherwise `--price-history`
-with a `(date,close_eur)` history file (e.g. `data/btc_eur_daily.csv`).
+with a `(date,close_eur)` history file (defaults to the copy vendored with
+the package; override with `--price-history other.csv`).
 Without a price source for a priceless deposit you get an error naming the
 date, never a silent zero.
 

@@ -204,15 +204,18 @@ def diagnose(csv_path: str | Path, price_at: PriceAt | None = None) -> DiagResul
 def load_price_history(path: str | Path | None) -> PriceAt | None:
     """Receipt-date price lookup seeded from a (date, close) history CSV.
 
-    Offline and deterministic; None means deposits must carry their own price.
+    Offline and deterministic. ``None`` falls back to the history vendored
+    with the package, so deposits work out of the box; dates outside its
+    coverage still fail loudly instead of valuing at zero.
     """
-    if path is None:
-        return None
     from utxoproof.db import open_memory_db
-    from utxoproof.price_oracle import EURPriceOracle
+    from utxoproof.price_oracle import EURPriceOracle, bundled_history_path
 
+    source = Path(path).expanduser() if path else bundled_history_path()
+    if not source.is_file():
+        raise ValueError(f"price history not found: {source} (pass --price-history explicitly)")
     oracle = EURPriceOracle(open_memory_db())
-    oracle.load_csv(path, "BTC/EUR", "price-history")
+    oracle.load_csv(source, "BTC/EUR", "price-history")
     return oracle.get_btc_eur
 
 

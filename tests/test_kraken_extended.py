@@ -103,6 +103,15 @@ def test_user_2017_deposit_shape() -> None:
     assert deposit.source_type == "exchange_purchase"
 
 
+def test_unpriced_deposit_without_source_is_loud() -> None:
+    import pytest
+
+    from utxoproof.cli import _deposit_unit_price
+
+    with pytest.raises(ValueError, match="--price-history"):
+        _deposit_unit_price("2023-02-01", Decimal("0"), None)
+
+
 def test_diagnose_names_shortfall_and_cover() -> None:
     from utxoproof.cli import diagnose
 
@@ -175,10 +184,8 @@ def test_cli_check_and_price_history_flag(tmp_path: Path, capsys) -> None:
         "2023-03-01,SELL,SELL,0.25,24000,0\n",
         encoding="utf-8",
     )
-    import pytest as _pytest
-
-    with _pytest.raises(ValueError, match="--price-history"):
-        main(["compute", "--input", str(marvel), "--year", "2023"])
+    # No flag: bundled vendored history covers 2023-02-01 transparently.
+    assert main(["compute", "--input", str(marvel), "--year", "2023"]) == 0
     assert (
         main(
             [

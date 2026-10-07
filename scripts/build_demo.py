@@ -93,7 +93,9 @@ def main() -> int:
 
     _history_db = open_memory_db()
     _history_oracle = EURPriceOracle(_history_db)
-    _history_oracle.load_csv(ROOT / "data" / "btc_eur_daily.csv", "BTC/EUR", "demo-seed")
+    _history_oracle.load_csv(
+        ROOT / "utxoproof" / "data" / "btc_eur_daily.csv", "BTC/EUR", "demo-seed"
+    )
     demo_price_at = _history_oracle.get_btc_eur
 
     for demo in DEMOS:
@@ -295,7 +297,7 @@ def main() -> int:
     )
     from utxoproof.portfolio import load_price_series, svg_sparkline
 
-    history = load_price_series(ROOT / "data" / "btc_eur_daily.csv")
+    history = load_price_series(ROOT / "utxoproof" / "data" / "btc_eur_daily.csv")
     sparkline = svg_sparkline(history, label="BTC/EUR daily close, last 12 months")
     write_overview_page(
         portfolio,

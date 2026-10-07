@@ -26,6 +26,13 @@ class PriceOracleError(RuntimeError):
     pass
 
 
+def bundled_history_path() -> Path:
+    """Vendored BTC/EUR history shipped with the package (offline default)."""
+    from importlib import resources
+
+    return Path(str(resources.files("utxoproof") / "data" / "btc_eur_daily.csv"))
+
+
 def _first_value(row: dict[str, str]) -> str:
     for key, value in row.items():
         if key not in ("date", "source") and value not in (None, ""):

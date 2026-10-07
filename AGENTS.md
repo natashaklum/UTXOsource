@@ -74,9 +74,9 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   chart HTML is trusted generator output (`| safe` in templates, everything
   else stays autoescaped). KYC colors are fixed per status (canonical order);
   entity bars use dominant-KYC color.
-- Price history: `data/btc_eur_daily.csv` (2010-08-18 first real print ->
+- Price history: `utxoproof/data/btc_eur_daily.csv` (2010-08-18 first real print ->
   now; Kraken native, blockchain.info x ECB before) and
-  `data/usd_eur_daily.csv` (ECB 1999 -> now). Refresh via
+  `utxoproof/data/usd_eur_daily.csv` (ECB 1999 -> now). Refresh via
   `scripts/fetch_price_history.py`. Seed caches with
   `EURPriceOracle.load_csv` (existing rows win).
 - Packaging: `Dockerfile` (+`.dockerignore`), `docker-compose.yml` (mainnet)
