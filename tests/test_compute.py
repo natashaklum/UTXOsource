@@ -40,5 +40,5 @@ def test_margin_sell_on_empty_inventory_names_cause() -> None:
     from utxoproof.cli import compute_year
 
     fixture = Path(__file__).parent / "fixtures" / "margin_short.csv"
-    with pytest.raises(ValueError, match="MARGIN.*empty inventory.*short sale"):
+    with pytest.raises(ValueError, match=r"MARGIN.*empty inventory.*short sale"):
         compute_year(fixture, 2021)
