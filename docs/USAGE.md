@@ -30,6 +30,11 @@ VIRTUAL_ENV=.venv uv pip install -e ".[dev]"
 cp utxoproof.example.toml utxoproof.toml
 ```
 
+The `.venv` lives inside the checkout on purpose: it is a disposable build
+artifact (gitignored, no financial data in it), not code you keep and not
+data you back up. Delete and recreate it any time with the two `uv` lines
+above. What matters is keeping the *data directory* (next section) elsewhere.
+
 Docker (runs the mainnet stack; regtest dev stack is `docker-compose.regtest.yml`):
 
 ```bash
@@ -64,6 +69,11 @@ For a first real-data trial, point the variable at an empty folder: the worst
 case is one folder to delete.
 
 ## 3. Configuration (`utxoproof.toml`)
+
+Optional, not mandatory. Only `report` reads it (via `--config`, defaulting
+to `./utxoproof.toml` then `~/.utxoproof/utxoproof.toml`); every other command
+runs on documented defaults today. Create it when you want anything other
+than the defaults — most importantly your communal surcharge rate.
 
 Copy `utxoproof.example.toml` and review three sections:
 
