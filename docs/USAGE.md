@@ -108,10 +108,13 @@ case is one folder to delete.
 
 ## 3. Configuration (`utxoproof.toml`)
 
-Optional, not mandatory. Only `report` reads it (via `--config`, defaulting
-to `./utxoproof.toml` then `~/.utxoproof/utxoproof.toml`); every other command
-runs on documented defaults today. Create it when you want anything other
-than the defaults — most importantly your communal surcharge rate.
+Optional, not mandatory. `report` and `import` read it; every other command
+runs on documented defaults today. When several copies exist, the first hit
+wins: `--config` flag → `./utxoproof.toml` → `$UTXOPROOF_DATA_DIR/utxoproof.toml`
+→ `~/.utxoproof/utxoproof.toml`. The margin-trading note, for example, only
+appears when the winning file leaves `used_leverage` unset — and it names the
+file, so there is never a mystery about which copy counts. Your data-folder
+copy is therefore a first-class citizen, not a spare.
 
 Copy `utxoproof.example.toml` and review three sections:
 

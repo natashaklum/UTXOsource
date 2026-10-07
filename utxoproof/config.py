@@ -6,6 +6,7 @@ arrive with their sprints. Missing file -> defaults; unknown keys ignored.
 
 from __future__ import annotations
 
+import os
 import tomllib
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -48,21 +49,31 @@ def _decimal(value: object, default: Decimal) -> Decimal:
         return default
 
 
-def load_config(path: str | Path | None = None) -> Config:
-    """Load utxoproof.toml; fall back to defaults when absent."""
-    candidates = (
-        [Path(path).expanduser()]
-        if path
-        else [Path("utxoproof.toml"), Path("~/.utxoproof/utxoproof.toml").expanduser()]
-    )
-    data: dict[str, Any] = {}
+def find_config(path: str | Path | None = None) -> Path | None:
+    """Locate the effective config file: flag > ./ > $DATA_DIR > ~/.utxoproof."""
+    if path:
+        candidate = Path(path).expanduser()
+        return candidate.absolute() if candidate.is_file() else None
+    data_home = os.environ.get("UTXOPROOF_DATA_DIR")
+    candidates = [Path("utxoproof.toml").absolute()]
+    if data_home:
+        candidates.append(Path(data_home).expanduser() / "utxoproof.toml")
+    candidates.append(Path("~/.utxoproof/utxoproof.toml").expanduser())
     for candidate in candidates:
         if candidate.is_file():
-            with open(candidate, "rb") as f:
-                loaded = tomllib.load(f)
-            if isinstance(loaded, dict):
-                data = loaded
-            break
+            return candidate
+    return None
+
+
+def load_config(path: str | Path | None = None) -> Config:
+    """Load utxoproof.toml; fall back to defaults when absent."""
+    data: dict[str, Any] = {}
+    found = find_config(path)
+    if found is not None:
+        with open(found, "rb") as f:
+            loaded = tomllib.load(f)
+        if isinstance(loaded, dict):
+            data = loaded
 
     taxpayer = data.get("taxpayer", {})
     classifier = data.get("classifier", {})

@@ -212,6 +212,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["kyc", "non_kyc", "unknown"],
         help="Override KYC status (default: exchange default)",
     )
+    impi.add_argument("--config", default=None, help="utxoproof.toml path")
     impi.add_argument(
         "--out",
         default=None,
@@ -562,15 +563,20 @@ def _run_import(args: argparse.Namespace) -> int:
                 raise ValueError("--trades only applies to --type kraken")
             txs = parser(args.file)
         else:
+            from utxoproof.config import find_config, load_config
             from utxoproof.kraken_csv import detect_margin_activity, parse_kraken_ledgers
 
             txs = parse_kraken_ledgers(args.file, args.trades)
             if detect_margin_activity(txs):
-                print(
-                    "note: margin trading detected — set used_leverage=true "
-                    "in utxoproof.toml [classifier]",
-                    file=sys.stderr,
-                )
+                config = load_config(args.config)
+                if not config.classifier.used_leverage:
+                    source = find_config(args.config)
+                    where = f" ({source})" if source else " (no file found; see --config)"
+                    print(
+                        "note: margin trading detected but used_leverage is not set "
+                        f"in utxoproof.toml [classifier]{where}",
+                        file=sys.stderr,
+                    )
         if args.kyc != "kyc":
             for tx in txs:
                 tx.kyc_status = args.kyc

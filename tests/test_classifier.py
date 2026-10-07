@@ -101,3 +101,81 @@ def test_config_defaults_and_overrides(tmp_path: Path) -> None:
     signals = signals_from_csv(FIXTURE, 2023, config.classifier)
     cls, _ = BelgianClassifier().classify(signals)
     assert cls == BelgianTaxClass.SPECULATOR
+
+
+def test_find_config_search_order(tmp_path: Path, monkeypatch) -> None:
+    from utxoproof.config import find_config
+
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    datadir = tmp_path / "data"
+    datadir.mkdir()
+    home = tmp_path / "home"
+    home.mkdir()
+    local = workdir / "utxoproof.toml"
+    local.write_text("[classifier]\nused_leverage = false\n")
+    in_data = datadir / "utxoproof.toml"
+    in_data.write_text("[classifier]\nused_leverage = true\n")
+    monkeypatch.chdir(workdir)
+    monkeypatch.setenv("UTXOPROOF_DATA_DIR", str(datadir))
+    monkeypatch.setenv("HOME", str(home))  # no ~/.utxoproof/utxoproof.toml
+    assert find_config() == local  # ./ wins over data dir
+    local.unlink()
+    assert find_config() == in_data  # data dir wins over home
+    in_data.unlink()
+    assert find_config() is None  # nothing anywhere
+    explicit = tmp_path / "custom.toml"
+    explicit.write_text("[classifier]\n")
+    assert find_config(explicit) == explicit
+    assert find_config(tmp_path / "absent.toml") is None
+
+
+def test_import_margin_note_respects_config(tmp_path: Path, monkeypatch, capsys) -> None:
+    from utxoproof.cli import main
+
+    ledgers = Path(__file__).parent / "fixtures" / "kraken_ledgers_margin.csv"
+    trades = Path(__file__).parent / "fixtures" / "kraken_trades_2023.csv"
+    monkeypatch.chdir(tmp_path)  # no ./utxoproof.toml here
+    monkeypatch.delenv("UTXOPROOF_DATA_DIR", raising=False)
+
+    out = tmp_path / "m.csv"
+    assert (
+        main(
+            [
+                "import",
+                "--file",
+                str(ledgers),
+                "--type",
+                "kraken",
+                "--trades",
+                str(trades),
+                "--out",
+                str(out),
+            ]
+        )
+        == 0
+    )
+    assert "used_leverage" in capsys.readouterr().err  # nagged: nothing set
+
+    config = tmp_path / "utxoproof.toml"
+    config.write_text("[classifier]\nused_leverage = true\n")
+    out2 = tmp_path / "m2.csv"
+    assert (
+        main(
+            [
+                "import",
+                "--file",
+                str(ledgers),
+                "--type",
+                "kraken",
+                "--trades",
+                str(trades),
+                "--out",
+                str(out2),
+                "--config",
+                str(config),
+            ]
+        )
+        == 0
+    )
+    assert "used_leverage" not in capsys.readouterr().err  # silent: already set
