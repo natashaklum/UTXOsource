@@ -262,3 +262,49 @@ def test_diagnose_print_is_dust_free(tmp_path: Path, capsys) -> None:
     assert print_diagnosis(diagnose(csv_path)) == 0
     out = capsys.readouterr().out
     assert "0E-10" not in out and "0.1000000000" not in out
+
+
+def test_withdrawal_carries_basis_without_gain(tmp_path: Path) -> None:
+    """Buy 1.0, withdraw 0.4 (no gain), sell 0.6 of what remains."""
+    import csv
+
+    from utxoproof.cli import compute_details, compute_inventory
+
+    csv_path = tmp_path / "w.csv"
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f, fieldnames=["date", "side", "kind", "btc", "eur_per_btc", "fee_eur"]
+        )
+        writer.writeheader()
+        writer.writerows(
+            [
+                {
+                    "date": "2023-01-01",
+                    "side": "BUY",
+                    "kind": "BUY",
+                    "btc": "1.0",
+                    "eur_per_btc": "20000",
+                    "fee_eur": "10",
+                },
+                {
+                    "date": "2023-02-01",
+                    "side": "WITHDRAWAL",
+                    "kind": "WITHDRAWAL",
+                    "btc": "0.4",
+                    "eur_per_btc": "0",
+                    "fee_eur": "0",
+                },
+                {
+                    "date": "2023-03-01",
+                    "side": "SELL",
+                    "kind": "SELL",
+                    "btc": "0.6",
+                    "eur_per_btc": "25000",
+                    "fee_eur": "5",
+                },
+            ]
+        )
+    result = compute_details(csv_path, 2023)
+    # pool after withdrawal: 0.6 BTC / 12006; proceeds 14995 -> gain 2989
+    assert result["gain_loss_eur"] == Decimal("2989")
+    assert compute_inventory(csv_path) == {"btc": Decimal("0"), "cost_eur": Decimal("0")}

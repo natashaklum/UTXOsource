@@ -169,6 +169,21 @@ def signals_from_csv(
                 running_btc += btc
                 running_cost += btc * unit + fee
                 lots.append(_FifoLot(btc, day))
+            elif side == "WITHDRAWAL":
+                from utxoproof.cli import _empty_inventory_error
+
+                if running_btc <= 0:
+                    raise _empty_inventory_error(row)
+                need = btc
+                while need > 0 and lots:
+                    take = min(lots[0].remaining_btc, need)
+                    lots[0].remaining_btc -= take
+                    if lots[0].remaining_btc <= 0:
+                        lots.pop(0)
+                    need -= take
+                avg = running_cost / running_btc if running_btc else Decimal("0")
+                running_btc -= btc
+                running_cost -= avg * btc
             elif side == "SELL":
                 need = btc
                 while need > 0 and lots:

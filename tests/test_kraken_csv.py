@@ -46,7 +46,7 @@ def test_kraken_to_compute_end_to_end(tmp_path: Path) -> None:
     import csv
 
     rows = to_manual_csv_rows(parse_kraken_ledgers(FIXTURE))
-    assert len(rows) == 5
+    assert len(rows) == 6  # + R5 withdrawal (basis travels, no gain) + R7 deposit
     assert rows[-1]["side"] == "DEPOSIT"
     csv_path = tmp_path / "kraken.csv"
     with open(csv_path, "w", newline="", encoding="utf-8") as f:

@@ -126,6 +126,14 @@ def compute_details(
                 unit = _deposit_unit_price(str(row["date"]), price, price_at)
                 total_btc += btc
                 total_cost += btc * unit + fee
+            elif side == "WITHDRAWAL":
+                # Non-taxable move out (e.g. to self-custody): basis travels
+                # with the coins; pool shrinks proportionally, no gain booked.
+                if total_btc <= Decimal("0"):
+                    raise _empty_inventory_error(row)
+                taken = total_cost / total_btc * btc if total_btc else Decimal("0")
+                total_btc -= btc
+                total_cost -= taken
             elif side == "SELL":
                 if total_btc <= Decimal("0"):
                     raise _empty_inventory_error(row)
@@ -223,6 +231,7 @@ def diagnose(csv_path: str | Path, price_at: PriceAt | None = None) -> DiagResul
     pool_cost = Decimal("0")
     buys_btc = Decimal("0")
     deposits_btc = Decimal("0")
+    withdrawals_btc = Decimal("0")
     rows: list[DiagDisposal] = []
     shortfalls = 0
     nets = _day_nets(csv_path)
@@ -241,6 +250,11 @@ def diagnose(csv_path: str | Path, price_at: PriceAt | None = None) -> DiagResul
                 pool_btc += btc
                 pool_cost += btc * unit + fee
                 deposits_btc += btc
+            elif side == "WITHDRAWAL":
+                taken = pool_cost / pool_btc * btc if pool_btc > 0 else Decimal("0")
+                pool_btc -= btc
+                pool_cost -= taken
+                withdrawals_btc += btc
             elif side == "SELL":
                 shortfall = max(Decimal("0"), btc - pool_btc)
                 verdict = ""
@@ -262,6 +276,7 @@ def diagnose(csv_path: str | Path, price_at: PriceAt | None = None) -> DiagResul
                         "shortfall_btc": shortfall,
                         "buys_btc": buys_btc,
                         "deposits_btc": deposits_btc,
+                        "withdrawals_btc": withdrawals_btc,
                         "verdict": verdict,
                     }
                 )
@@ -307,6 +322,7 @@ class DiagDisposal(TypedDict):
     shortfall_btc: Decimal
     buys_btc: Decimal
     deposits_btc: Decimal
+    withdrawals_btc: Decimal
     verdict: str  # "" when covered; else ORDER | STRUCTURAL
 
 
@@ -329,14 +345,15 @@ def print_diagnosis(result: DiagResult) -> int:
     for row in result["disposals"]:
         if row["shortfall_btc"]:
             flag = (
-                f"SHORTFALL {+row['shortfall_btc']} BTC "
-                f"(pool had {+row['pool_btc']}, "
-                f"{+row['buys_btc']} bought / {+row['deposits_btc']} deposited) "
+                f"SHORTFALL {row['shortfall_btc']:f} BTC "
+                f"(pool had {row['pool_btc']:f}, "
+                f"{row['buys_btc']:f} bought / {row['deposits_btc']:f} deposited / "
+                f"{row['withdrawals_btc']:f} withdrawn) "
                 f"[{row['verdict']}]"
             )
         else:
             flag = "ok"
-        print(f"{row['date']} {row['kind']} {+row['btc']} BTC -> {flag}")
+        print(f"{row['date']} {row['kind']} {row['btc']:f} BTC -> {flag}")
     for pair in result["doubles"]:
         print(f"DOUBLE-COUNT {pair['ref']}: {pair['first']} ~= {pair['second']}")
     for pair in result["probable"]:
@@ -374,6 +391,12 @@ def compute_inventory(csv_path: str | Path, price_at: PriceAt | None = None) -> 
                 deposit_unit = _deposit_unit_price(str(row["date"]), unit, price_at)
                 total_btc += btc
                 total_cost += btc * deposit_unit + fee
+            elif side == "WITHDRAWAL":
+                if total_btc <= Decimal("0"):
+                    raise _empty_inventory_error(row)
+                taken = total_cost / total_btc * btc if total_btc else Decimal("0")
+                total_btc -= btc
+                total_cost -= taken
             elif side == "SELL":
                 if total_btc <= Decimal("0"):
                     raise _empty_inventory_error(row)

@@ -42,7 +42,8 @@ def to_manual_csv_rows(txs: list[ExchangeTx]) -> list[dict[str, str]]:
     BUY/SELL pass through; MARGIN settles like a SELL (taxable disposal);
     ROLLOVER becomes a zero-BTC BUY carrying just the financing fee into the
     cost pool; DEPOSIT rows pass through for receipt-date valuation at compute
-    time. The original ``kind`` is preserved in its own column (compute
+    time; WITHDRAWAL rows pass through to carry basis out (non-taxable moves).
+    The original ``kind`` is preserved in its own column (compute
     ignores extra columns) so reports can show margin lines separately.
     """
     rows = []
@@ -58,7 +59,7 @@ def to_manual_csv_rows(txs: list[ExchangeTx]) -> list[dict[str, str]]:
             side, btc = "SELL", tx.btc
         elif tx.kind == "ROLLOVER":
             side, btc = "BUY", Decimal("0")
-        elif tx.kind in ("BUY", "SELL", "DEPOSIT"):
+        elif tx.kind in ("BUY", "SELL", "DEPOSIT", "WITHDRAWAL"):
             side, btc = tx.kind, tx.btc
         else:
             continue

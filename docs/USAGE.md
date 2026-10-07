@@ -151,7 +151,9 @@ pool at receipt-date value: stated price first, otherwise `--price-history`
 with a `(date,close_eur)` history file (defaults to the copy vendored with
 the package; override with `--price-history other.csv`).
 Without a price source for a priceless deposit you get an error naming the
-date, never a silent zero.
+date, never a silent zero. Withdrawals to self-custody are not disposals,
+but they carry proportional basis out of the pool — otherwise exchange
+holdings would be overstated by everything you moved to your own wallets.
 
 ### Kraken: ledgers, trades, margin
 

@@ -48,28 +48,21 @@ def test_bisq_is_non_kyc_and_requires_direction(tmp_path: Path) -> None:
         parse_bisq_csv(bad)
 
 
-def test_coinbase_end_to_end_gain() -> None:
+def test_coinbase_end_to_end_gain(tmp_path: Path) -> None:
+    import csv
+
+    from utxoproof.cli import compute_details
 
     rows = to_manual_csv_rows(parse_coinbase_csv(FIXTURES / "coinbase_2023.csv"))
-    assert len(rows) == 2
-    gain = _gain(rows)
-    assert gain == Decimal("2490")  # 12495 - (20010 / 2)
-
-
-def _gain(rows: list[dict[str, str]]) -> Decimal:
-    total_btc = Decimal("0")
-    total_cost = Decimal("0")
-    realised = Decimal("0")
-    for row in rows:
-        btc = Decimal(row["btc"])
-        price = Decimal(row["eur_per_btc"])
-        fee = Decimal(row["fee_eur"])
-        if row["side"] == "BUY":
-            total_btc += btc
-            total_cost += btc * price + fee
-        else:
-            avg = total_cost / total_btc
-            realised += (btc * price - fee) - avg * btc
-            total_btc -= btc
-            total_cost -= avg * btc
-    return realised
+    assert len(rows) == 3  # buy, sell, withdrawal (cashflow carried, no gain)
+    assert rows[-1]["side"] == "WITHDRAWAL"
+    csv_path = tmp_path / "coinbase.csv"
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=["date", "side", "kind", "trade_refs", "btc", "eur_per_btc", "fee_eur"],
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+    result = compute_details(csv_path, 2023)
+    assert result["gain_loss_eur"] == Decimal("2490")  # 12495 - (20010 / 2)
