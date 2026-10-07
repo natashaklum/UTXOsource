@@ -320,7 +320,9 @@ def _parse_margin_disposal(
             price = fiat_total / abs(btc_amount)
     if price <= 0:
         raise ValueError(
-            f"Kraken refid {refid}: margin disposal without price (no linked trade, no fiat leg)"
+            f"Kraken refid {refid}: margin disposal of {abs(btc_amount)} BTC without price; "
+            "link its closing trade via --trades (trades.csv ledgers column) or check "
+            "whether the fiat leg sits in a sibling refid group"
         )
     btc = abs(btc_amount)
     btc_fee = sum((Decimal(r.get("fee") or "0") for r in btc_rows), Decimal("0"))

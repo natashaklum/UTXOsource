@@ -1,0 +1,2 @@
+txid,ordertxid,pair,time,type,ordertype,price,cost,fee,vol,margin,misc,ledgers
+T50,O50,XXBTZEUR,2025-08-24 21:20:11,sell,market,100000,5218.97,28.34,0.05218971,0.1,,L503

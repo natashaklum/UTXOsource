@@ -83,3 +83,49 @@ def _gain(rows: list[dict[str, str]]) -> Decimal:
             total_btc -= btc
             total_cost -= avg * btc
     return realised
+
+
+USER_LEDGERS = FIXTURES / "kraken_ledgers_user_margin.csv"
+USER_TRADES = FIXTURES / "kraken_trades_user.csv"
+
+
+def test_user_margin_fee_only_row() -> None:
+    txs = parse_kraken_ledgers(USER_LEDGERS, USER_TRADES)
+    by_ref = {tx.refid: tx for tx in txs}
+    fee_only = by_ref["U01"]
+    assert (fee_only.kind, fee_only.btc, fee_only.fee_eur) == (
+        "MARGIN",
+        Decimal("0"),
+        Decimal("1.1234"),
+    )
+    assert fee_only.wallet == "spot / main" and fee_only.subclass == "fiat"
+
+
+def test_user_margin_btc_disposal_priced_by_linked_trade() -> None:
+    txs = parse_kraken_ledgers(USER_LEDGERS, USER_TRADES)
+    disposal = {tx.refid: tx for tx in txs}["U03"]
+    assert (disposal.kind, disposal.btc, disposal.eur_per_btc, disposal.margin) == (
+        "MARGIN",
+        Decimal("0.05218971"),
+        Decimal("100000"),
+        True,
+    )
+    assert disposal.fee_eur == Decimal("28.34")
+    assert detect_margin_activity(txs) is True
+
+
+def test_user_eth_margin_skipped_with_reason() -> None:
+    skipped: list[tuple[str, str]] = []
+    txs = parse_kraken_ledgers(USER_LEDGERS, USER_TRADES, skipped=skipped)
+    assert "U02" not in {tx.refid for tx in txs}
+    assert ("U02", "margin: non-BTC leg, out of scope") in skipped
+
+
+def test_unpriced_margin_disposal_names_remedy(tmp_path: Path) -> None:
+    lonely = tmp_path / "lonely.csv"
+    lonely.write_text(
+        "txid,refid,time,type,subtype,aclass,subclass,asset,wallet,amount,fee,balance\n"
+        "L1,Q1,2025-01-01 00:00:00,margin,,currency,crypto,XXBT,spot / main,-0.5,0.0,0.5\n"
+    )
+    with pytest.raises(ValueError, match=r"Q1.*--trades"):
+        parse_kraken_ledgers(lonely)
