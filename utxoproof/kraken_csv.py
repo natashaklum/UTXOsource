@@ -47,6 +47,10 @@ def _split_ledgers_refs(value: str) -> list[str]:
     return [part.strip() for part in (value or "").split(",") if part.strip()]
 
 
+def _trade_ids(trades: list[dict[str, str]]) -> tuple[str, ...]:
+    return tuple(t.get("txid", "").strip() for t in trades if t.get("txid", "").strip())
+
+
 def parse_kraken_trades(path: str | Path) -> dict[str, dict[str, str]]:
     """Parse a Kraken trades.csv export, keyed by trade txid."""
     trades: dict[str, dict[str, str]] = {}
@@ -347,6 +351,7 @@ def _parse_margin_disposal(
         margin=True,
         wallet=wallet,
         subclass=subclass,
+        trade_refs=_trade_ids(trades),
     )
 
 
@@ -546,6 +551,7 @@ def _parse_trade(
         margin=margined,
         wallet=wallet,
         subclass=subclass,
+        trade_refs=_trade_ids(trades),
     )
 
 

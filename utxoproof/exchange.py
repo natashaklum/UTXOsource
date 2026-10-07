@@ -28,6 +28,7 @@ class ExchangeTx:
     margin: bool = False
     wallet: str = ""
     subclass: str = ""
+    trade_refs: tuple[str, ...] = ()
 
     @property
     def fiat_amount(self) -> Decimal:
@@ -66,6 +67,7 @@ def to_manual_csv_rows(txs: list[ExchangeTx]) -> list[dict[str, str]]:
                 "date": tx.date.isoformat(),
                 "side": side,
                 "kind": tx.kind,
+                "trade_refs": ";".join(tx.trade_refs),
                 "btc": str(btc),
                 "eur_per_btc": str(tx.eur_per_btc),
                 "fee_eur": str(tx.fee_eur),

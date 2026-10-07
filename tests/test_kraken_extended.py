@@ -152,7 +152,7 @@ def test_deposit_covers_later_disposal(tmp_path: Path) -> None:
     csv_path = tmp_path / "dep.csv"
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(
-            f, fieldnames=["date", "side", "kind", "btc", "eur_per_btc", "fee_eur"]
+            f, fieldnames=["date", "side", "kind", "trade_refs", "btc", "eur_per_btc", "fee_eur"]
         )
         writer.writeheader()
         writer.writerows(rows)
@@ -200,3 +200,65 @@ def test_cli_check_and_price_history_flag(tmp_path: Path, capsys) -> None:
         )
         == 0
     )
+
+
+def test_diagnose_certain_double_count(tmp_path: Path) -> None:
+    from utxoproof.cli import diagnose
+
+    csv_path = tmp_path / "dbl.csv"
+    csv_path.write_text(
+        "date,side,kind,trade_refs,btc,eur_per_btc,fee_eur\n"
+        "2023-01-05,BUY,BUY,,2.0,19000,0\n"
+        "2023-03-20,SELL,SELL,T9,0.5,25000,0\n"
+        "2023-03-20,SELL,MARGIN,T9,0.5,25000,0\n",
+        encoding="utf-8",
+    )
+    result = diagnose(csv_path)
+    assert len(result["doubles"]) == 1
+    assert result["doubles"][0]["kind"] == "CERTAIN"
+    assert result["doubles"][0]["ref"] == "T9"
+
+
+def test_diagnose_probable_pair_and_order_verdict(tmp_path: Path) -> None:
+    from utxoproof.cli import diagnose
+
+    csv_path = tmp_path / "prob.csv"
+    csv_path.write_text(
+        "date,side,kind,trade_refs,btc,eur_per_btc,fee_eur\n"
+        "2023-03-20,SELL,MARGIN,,0.6,25000,0\n"
+        "2023-03-20,BUY,BUY,,1.5,20000,0\n"
+        "2023-03-20,SELL,SELL,,0.6,25000,0\n",
+        encoding="utf-8",
+    )
+    result = diagnose(csv_path)
+    assert result["shortfalls"] == 1  # first 0.6 exceeds empty pool
+    assert result["disposals"][0]["verdict"] == "ORDER"  # day nets +0.3 overall
+    assert len(result["probable"]) == 1
+    assert result["probable"][0]["kind"] == "PROBABLE"
+
+
+def test_diagnose_structural_verdict(tmp_path: Path) -> None:
+    from utxoproof.cli import diagnose
+
+    csv_path = tmp_path / "struct.csv"
+    csv_path.write_text(
+        "date,side,kind,trade_refs,btc,eur_per_btc,fee_eur\n2023-03-20,SELL,MARGIN,,0.5,25000,0\n",
+        encoding="utf-8",
+    )
+    result = diagnose(csv_path)
+    assert result["disposals"][0]["verdict"] == "STRUCTURAL"
+
+
+def test_diagnose_print_is_dust_free(tmp_path: Path, capsys) -> None:
+    from utxoproof.cli import diagnose, print_diagnosis
+
+    csv_path = tmp_path / "dust.csv"
+    csv_path.write_text(
+        "date,side,kind,trade_refs,btc,eur_per_btc,fee_eur\n"
+        "2023-01-05,BUY,BUY,,0.1,20000,0\n"
+        "2023-03-20,SELL,SELL,,0.1,25000,0\n",
+        encoding="utf-8",
+    )
+    assert print_diagnosis(diagnose(csv_path)) == 0
+    out = capsys.readouterr().out
+    assert "0E-10" not in out and "0.1000000000" not in out

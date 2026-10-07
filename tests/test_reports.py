@@ -41,7 +41,7 @@ def test_kraken_report_end_to_end(tmp_path: Path) -> None:
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(
             f,
-            fieldnames=["date", "side", "kind", "btc", "eur_per_btc", "fee_eur"],
+            fieldnames=["date", "side", "kind", "trade_refs", "btc", "eur_per_btc", "fee_eur"],
             extrasaction="ignore",
         )
         writer.writeheader()

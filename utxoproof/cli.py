@@ -153,17 +153,79 @@ def compute_details(
     return {"disposals": disposals, "gain_loss_eur": realised_gain}
 
 
+def _day_nets(
+    csv_path: str | Path,
+) -> dict[str, Decimal]:
+    """Cumulative (buys + deposits - sells) through each date, in file order."""
+    cumulative = Decimal("0")
+    nets: dict[str, Decimal] = {}
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            side = str(row["side"]).strip().upper()
+            btc = Decimal(str(row["btc"]))
+            if side in ("BUY", "DEPOSIT"):
+                cumulative += btc
+            elif side == "SELL":
+                cumulative -= btc
+            nets[str(row["date"])] = cumulative
+    return nets
+
+
+def _certain_doubles(csv_path: str | Path) -> list[DiagPair]:
+    """Disposal pairs sharing a trade ref: one economic event, booked twice."""
+    by_ref: dict[str, list[str]] = {}
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if str(row["side"]).strip().upper() != "SELL":
+                continue
+            for ref in str(row.get("trade_refs") or "").split(";"):
+                ref = ref.strip()
+                if ref:
+                    by_ref.setdefault(ref, []).append(
+                        f"{row['date']} {row.get('kind') or 'SELL'} {row['btc']}"
+                    )
+    return [
+        {"kind": "CERTAIN", "ref": ref, "first": rows[0], "second": rows[1]}
+        for ref, rows in sorted(by_ref.items())
+        if len(rows) > 1
+    ]
+
+
+def _probable_doubles(rows: list[DiagDisposal]) -> list[DiagPair]:
+    """Same-date MARGIN vs SELL of matching size: suggestive, needs eyes."""
+    pairs: list[DiagPair] = []
+    for first in rows:
+        if first["kind"] != "MARGIN" or not first["shortfall_btc"]:
+            continue
+        for second in rows:
+            if second["kind"] == "MARGIN" or second["date"] != first["date"]:
+                continue
+            bigger = max(first["btc"], second["btc"])
+            if bigger > 0 and abs(first["btc"] - second["btc"]) / bigger <= Decimal("0.01"):
+                pairs.append(
+                    {
+                        "kind": "PROBABLE",
+                        "ref": first["date"],
+                        "first": f"MARGIN {first['btc']}",
+                        "second": f"{second['kind']} {second['btc']}",
+                    }
+                )
+                break
+    return pairs
+
+
 def diagnose(csv_path: str | Path, price_at: PriceAt | None = None) -> DiagResult:
     """Walk the file like the pool does, but never crash: every disposal is
-    annotated with pool coverage and cumulative inflow by kind. Shortfalls
-    (pool < disposal) name the likely cause: missing buys, missing deposit
-    valuation, or a true short position."""
+    annotated with pool coverage and cumulative inflow by kind. Shortfalls get
+    a verdict (ORDER = day nets fine, sequence lost; STRUCTURAL = funding
+    genuinely missing), plus certain/probable double-count suspects."""
     pool_btc = Decimal("0")
     pool_cost = Decimal("0")
     buys_btc = Decimal("0")
     deposits_btc = Decimal("0")
     rows: list[DiagDisposal] = []
     shortfalls = 0
+    nets = _day_nets(csv_path)
     with open(csv_path, newline="", encoding="utf-8") as f:
         for row in csv.DictReader(f):
             side = str(row["side"]).strip().upper()
@@ -181,8 +243,12 @@ def diagnose(csv_path: str | Path, price_at: PriceAt | None = None) -> DiagResul
                 deposits_btc += btc
             elif side == "SELL":
                 shortfall = max(Decimal("0"), btc - pool_btc)
+                verdict = ""
                 if shortfall > 0:
                     shortfalls += 1
+                    # Day nets fine but this row starves: intraday order lost.
+                    day_net = nets.get(str(row["date"]), Decimal("0"))
+                    verdict = "ORDER" if day_net >= 0 else "STRUCTURAL"
                 covered = min(btc, pool_btc)
                 basis = pool_cost / pool_btc * covered if pool_btc > 0 else Decimal("0")
                 pool_btc -= covered
@@ -196,9 +262,15 @@ def diagnose(csv_path: str | Path, price_at: PriceAt | None = None) -> DiagResul
                         "shortfall_btc": shortfall,
                         "buys_btc": buys_btc,
                         "deposits_btc": deposits_btc,
+                        "verdict": verdict,
                     }
                 )
-    return {"disposals": rows, "shortfalls": shortfalls}
+    return {
+        "disposals": rows,
+        "shortfalls": shortfalls,
+        "doubles": _certain_doubles(csv_path),
+        "probable": _probable_doubles(rows),
+    }
 
 
 def load_price_history(path: str | Path | None) -> PriceAt | None:
@@ -235,11 +307,21 @@ class DiagDisposal(TypedDict):
     shortfall_btc: Decimal
     buys_btc: Decimal
     deposits_btc: Decimal
+    verdict: str  # "" when covered; else ORDER | STRUCTURAL
+
+
+class DiagPair(TypedDict):
+    kind: str  # CERTAIN (shared trade ref) | PROBABLE (same date+size)
+    ref: str
+    first: str
+    second: str
 
 
 class DiagResult(TypedDict):
     disposals: list[DiagDisposal]
     shortfalls: int
+    doubles: list[DiagPair]
+    probable: list[DiagPair]
 
 
 def print_diagnosis(result: DiagResult) -> int:
@@ -247,12 +329,18 @@ def print_diagnosis(result: DiagResult) -> int:
     for row in result["disposals"]:
         if row["shortfall_btc"]:
             flag = (
-                f"SHORTFALL {row['shortfall_btc']} BTC (pool had {row['pool_btc']}, "
-                f"{row['buys_btc']} bought / {row['deposits_btc']} deposited)"
+                f"SHORTFALL {+row['shortfall_btc']} BTC "
+                f"(pool had {+row['pool_btc']}, "
+                f"{+row['buys_btc']} bought / {+row['deposits_btc']} deposited) "
+                f"[{row['verdict']}]"
             )
         else:
             flag = "ok"
-        print(f"{row['date']} {row['kind']} {row['btc']} BTC -> {flag}")
+        print(f"{row['date']} {row['kind']} {+row['btc']} BTC -> {flag}")
+    for pair in result["doubles"]:
+        print(f"DOUBLE-COUNT {pair['ref']}: {pair['first']} ~= {pair['second']}")
+    for pair in result["probable"]:
+        print(f"SUSPECT {pair['ref']}: {pair['first']} ~= {pair['second']} (confirm manually)")
     print(f"shortfalls: {result['shortfalls']}")
     return result["shortfalls"]
 

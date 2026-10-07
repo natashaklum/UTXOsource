@@ -277,6 +277,11 @@ by re-hashing against the manifest.
   It walks the file like the pool does but never crashes — each disposal is
   annotated with pool coverage and cumulative buys vs deposits, so shortfalls
   show exactly where coverage ran out and what kind of inflow is missing.
+  Shortfalls get a verdict (`ORDER` = the day nets fine, intraday sequence
+  lost; `STRUCTURAL` = funding genuinely missing), plus two suspect lists:
+  `DOUBLE-COUNT` (a trades ref booked on two disposal rows — certain) and
+  `SUSPECT` (same-date margin/sell of matching size — confirm manually).
+  Everything runs locally; paste back only what you're comfortable sharing.
 - `SELL with empty inventory`: your CSV sells more than it bought (check date
   order and missed deposits). A `MARGIN` disposal on empty inventory is
   usually a **short sale** (sell first, cover later) or an opening leg outside
