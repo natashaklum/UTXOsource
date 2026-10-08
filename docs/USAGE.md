@@ -106,6 +106,26 @@ utxoproof --data-dir /tmp/throwaway status --input manual.csv --price 40000
 For a first real-data trial, point the variable at an empty folder: the worst
 case is one folder to delete.
 
+## 2c. Complete runs: `prepare.sh` and `refresh.sh`
+
+`examples/` holds two runnable scripts with the settings on top — copy one
+next to your data dir and edit the paths, or override any variable from the
+environment (`DATA_DIR`, `KRAKEN_LEDGERS`, `KRAKEN_TRADES`, `TAX_YEAR`,
+`BTC_PRICE`, `CONFIG_FILE`, plus `UTXOPROOF_BIN` to point at your install):
+
+```bash
+cp examples/prepare.sh ~/utxoproof-data/prepare.sh
+$EDITOR ~/utxoproof-data/prepare.sh   # set KRAKEN_LEDGERS etc.
+bash ~/utxoproof-data/prepare.sh      # import -> check -> compute -> report
+bash ~/utxoproof-data/refresh.sh      # repeatable: refresh + alltime
+```
+
+`prepare.sh` **stops** when `check` reports shortfalls — first runs deserve
+interrogation, not momentum. `refresh.sh` is idempotent (full rewrite, no
+merge logic) and safe to re-run or cron once you trust the data. Both print
+`==>` stage lines, both honor `UTXOPROOF_DATA_DIR`, and both are covered by
+end-to-end tests running them against fixtures.
+
 ## 3. Configuration (`utxoproof.toml`)
 
 Optional, not mandatory. `report` and `import` read it; every other command

@@ -69,6 +69,9 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   thumbnails for small images, links otherwise.
 - One data dir: `utxoproof/paths.py` (`--data-dir` > `$UTXOPROOF_DATA_DIR` >
   `~/.utxoproof`); `--db`/`--evidence-dir` override per call.
+- Runnable workflows live in `examples/` (`run-lib.sh` shared stages,
+  `prepare.sh` stops on shortfalls, `refresh.sh` idempotent); covered by
+  `tests/test_run_scripts.py` driving them against fixtures.
 - Dashboard lives in `utxoproof/portfolio.py` (entities, rollups, inline SVG
   charts — no JavaScript). Overview -> entity pages -> provenance pages;
   chart HTML is trusted generator output (`| safe` in templates, everything
