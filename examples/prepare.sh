@@ -15,6 +15,16 @@ set -euo pipefail
 : "${TAX_YEAR:=2023}"
 : "${BTC_PRICE:=}"            # empty = oracle yesterday-close for status
 : "${CONFIG_FILE:=}"          # e.g. "$DATA_DIR/utxoproof.toml"
+: "${XPUB:=}"             # account xpub/ypub/zpub; empty skips on-chain stages
+: "${FINGERPRINT:=}"     # master fingerprint, 8 hex; paired with XPUB
+: "${RPC_URL:=http://127.0.0.1:8332}"  # bitcoind RPC URL
+: "${RPC_USER:=}"
+: "${RPC_PASSWORD:=}"
+: "${WALLET:=utxoproof_watchonly}"
+: "${PURPOSE:=84}"
+: "${COIN:=0}"
+: "${ACCOUNT:=0}"
+: "${ENTITIES_FILE:=}"    # path to entities config (TOML); empty skips portfolio
 # -------------------------------------------------------------------------
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,9 +34,8 @@ source "$SCRIPT_DIR/run-lib.sh"
 export UTXOPROOF_DATA_DIR="$DATA_DIR"
 
 stage_import
-CHECK_OUT="$(stage_check)"
-echo "$CHECK_OUT"
-SHORTFALLS="$(printf '%s\n' "$CHECK_OUT" | tail -n 1)"
+SHORTFALLS="$(stage_check | tail -n 1)"
+echo "$SHORTFALLS"
 case "$SHORTFALLS" in
     "shortfalls: 0") ;;
     *)
@@ -34,6 +43,8 @@ case "$SHORTFALLS" in
         ;;
 esac
 stage_compute
+stage_sync
 stage_report
 stage_status
+stage_portfolio
 log "prepare done: $DATA_DIR"

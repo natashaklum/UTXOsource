@@ -13,6 +13,16 @@ set -euo pipefail
 : "${TAX_YEAR:=$(date +%Y)}"
 : "${BTC_PRICE:=}"
 : "${CONFIG_FILE:=}"
+: "${XPUB:=}"             # account xpub/ypub/zpub; empty skips on-chain stages
+: "${FINGERPRINT:=}"     # master fingerprint, 8 hex; paired with XPUB
+: "${RPC_URL:=http://127.0.0.1:8332}"  # bitcoind RPC URL
+: "${RPC_USER:=}"
+: "${RPC_PASSWORD:=}"
+: "${WALLET:=utxoproof_watchonly}"
+: "${PURPOSE:=84}"       # BIP44 purpose
+: "${COIN:=0}"           # BIP44 coin
+: "${ACCOUNT:=0}"        # BIP44 account
+: "${ENTITIES_FILE:=}"   # path to entities config (TOML); empty skips portfolio
 
 log() { printf '==> %s\n' "$*"; }
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -66,6 +76,38 @@ stage_status() {
     else
         "$UTXOPROOF_BIN" status --input "$MANUAL" \
             --out "$DATA_DIR/current-status"
+    fi
+}
+
+stage_sync() {
+    log "sync: pull new on-chain transactions into SQLite"
+    if [ -n "$XPUB" ] && [ -n "$FINGERPRINT" ]; then
+        "$UTXOPROOF_BIN" sync --db "$DATA_DIR/utxoproof.db" \
+            --rpc-url "$RPC_URL" --rpc-user "$RPC_USER" \
+            --rpc-password "$RPC_PASSWORD" --wallet "$WALLET" \
+            --purpose "$PURPOSE" --coin "$COIN" --account "$ACCOUNT" \
+            2>/dev/null || log "warning: on-chain sync skipped (node unreachable or RPC error)"
+    else
+        log "note: on-chain sync skipped (set XPUB+FINGERPRINT to enable)"
+    fi
+}
+
+stage_portfolio() {
+    log "portfolio: build overview + entity pages"
+    if [ -n "$ENTITIES_FILE" ] && [ -f "$DATA_DIR/utxoproof.db" ]; then
+        if [ -f "$ENTITIES_FILE" ]; then
+            "$UTXOPROOF_BIN" portfolio --db "$DATA_DIR/utxoproof.db" \
+                --entities "$ENTITIES_FILE" \
+                --price "${BTC_PRICE:-40000}" \
+                --out "$DATA_DIR/portfolio" 2>/dev/null || \
+                log "warning: portfolio build skipped (entity config or DB issue)"
+        else
+            log "warning: entities file not found: $ENTITIES_FILE"
+        fi
+    elif [ -n "$ENTITIES_FILE" ]; then
+        log "note: portfolio skipped — DB $DATA_DIR/utxoproof.db not found; run prepare.sh first"
+    else
+        log "note: portfolio skipped (set ENTITIES_FILE to enable entity overview)"
     fi
 }
 
