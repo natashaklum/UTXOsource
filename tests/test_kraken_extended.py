@@ -308,3 +308,37 @@ def test_withdrawal_carries_basis_without_gain(tmp_path: Path) -> None:
     # pool after withdrawal: 0.6 BTC / 12006; proceeds 14995 -> gain 2989
     assert result["gain_loss_eur"] == Decimal("2989")
     assert compute_inventory(csv_path) == {"btc": Decimal("0"), "cost_eur": Decimal("0")}
+
+
+def test_over_withdrawal_clamps_with_warning_not_crash(tmp_path: Path, capsys) -> None:
+    from utxoproof.cli import compute_details, compute_inventory
+
+    csv_path = tmp_path / "over.csv"
+    csv_path.write_text(
+        "date,side,kind,btc,eur_per_btc,fee_eur\n"
+        "2023-01-01,BUY,BUY,0.1,20000,0\n"
+        "2023-02-01,WITHDRAWAL,WITHDRAWAL,0.5,0,0\n",
+        encoding="utf-8",
+    )
+    result = compute_details(csv_path, 2023)
+    assert result["gain_loss_eur"] == Decimal("0")  # no disposal, no gain
+    assert compute_inventory(csv_path) == {"btc": Decimal("0"), "cost_eur": Decimal("0")}
+    err = capsys.readouterr().err
+    assert "WARNING" in err and "pre-export" in err
+
+
+def test_sell_after_over_withdrawal_still_raises(tmp_path: Path) -> None:
+    import pytest
+
+    from utxoproof.cli import compute_year
+
+    csv_path = tmp_path / "over2.csv"
+    csv_path.write_text(
+        "date,side,kind,btc,eur_per_btc,fee_eur\n"
+        "2023-01-01,BUY,BUY,0.1,20000,0\n"
+        "2023-02-01,WITHDRAWAL,WITHDRAWAL,0.5,0,0\n"
+        "2023-03-01,SELL,SELL,0.05,25000,0\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match=r"empty inventory"):
+        compute_year(csv_path, 2023)

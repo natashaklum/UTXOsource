@@ -97,6 +97,29 @@ def _deposit_unit_price(row_date: str, row_price: Decimal, price_at: PriceAt | N
     )
 
 
+def _apply_withdrawal(
+    pool_btc: Decimal, pool_cost: Decimal, btc: Decimal, row: dict[str, str]
+) -> tuple[Decimal, Decimal]:
+    """Remove a withdrawal from the pool, clamping to what is tracked.
+
+    Withdrawals are moves, not valuations: clamping cannot invent gains.
+    Anything beyond the tracked pool belonged to pre-export holdings, which
+    are not modeled — warned loudly, never silently dropped from view.
+    """
+    import sys
+
+    if btc <= pool_btc:
+        taken = pool_cost / pool_btc * btc if pool_btc > 0 else Decimal("0")
+        return pool_btc - btc, pool_cost - taken
+    print(
+        f"WARNING: withdrawal of {btc:f} BTC on {row.get('date', '?')} exceeds "
+        f"tracked pool ({pool_btc:f}); pre-export holdings are not modeled, "
+        "excess ignored",
+        file=sys.stderr,
+    )
+    return Decimal("0"), Decimal("0")
+
+
 def compute_details(
     csv_path: str | Path, year: int, price_at: PriceAt | None = None
 ) -> ComputeResult:
@@ -129,11 +152,7 @@ def compute_details(
             elif side == "WITHDRAWAL":
                 # Non-taxable move out (e.g. to self-custody): basis travels
                 # with the coins; pool shrinks proportionally, no gain booked.
-                if total_btc <= Decimal("0"):
-                    raise _empty_inventory_error(row)
-                taken = total_cost / total_btc * btc if total_btc else Decimal("0")
-                total_btc -= btc
-                total_cost -= taken
+                total_btc, total_cost = _apply_withdrawal(total_btc, total_cost, btc, row)
             elif side == "SELL":
                 if total_btc <= Decimal("0"):
                     raise _empty_inventory_error(row)
@@ -251,9 +270,7 @@ def diagnose(csv_path: str | Path, price_at: PriceAt | None = None) -> DiagResul
                 pool_cost += btc * unit + fee
                 deposits_btc += btc
             elif side == "WITHDRAWAL":
-                taken = pool_cost / pool_btc * btc if pool_btc > 0 else Decimal("0")
-                pool_btc -= btc
-                pool_cost -= taken
+                pool_btc, pool_cost = _apply_withdrawal(pool_btc, pool_cost, btc, row)
                 withdrawals_btc += btc
             elif side == "SELL":
                 shortfall = max(Decimal("0"), btc - pool_btc)
@@ -392,11 +409,7 @@ def compute_inventory(csv_path: str | Path, price_at: PriceAt | None = None) -> 
                 total_btc += btc
                 total_cost += btc * deposit_unit + fee
             elif side == "WITHDRAWAL":
-                if total_btc <= Decimal("0"):
-                    raise _empty_inventory_error(row)
-                taken = total_cost / total_btc * btc if total_btc else Decimal("0")
-                total_btc -= btc
-                total_cost -= taken
+                total_btc, total_cost = _apply_withdrawal(total_btc, total_cost, btc, row)
             elif side == "SELL":
                 if total_btc <= Decimal("0"):
                     raise _empty_inventory_error(row)

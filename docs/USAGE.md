@@ -154,6 +154,9 @@ Without a price source for a priceless deposit you get an error naming the
 date, never a silent zero. Withdrawals to self-custody are not disposals,
 but they carry proportional basis out of the pool — otherwise exchange
 holdings would be overstated by everything you moved to your own wallets.
+A withdrawal bigger than the tracked pool is clamped with a loud warning
+(pre-export holdings are not modeled) instead of aborting the whole run;
+only a *sell* with genuinely nothing behind it still raises.
 
 ### Kraken: ledgers, trades, margin
 

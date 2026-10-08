@@ -170,10 +170,9 @@ def signals_from_csv(
                 running_cost += btc * unit + fee
                 lots.append(_FifoLot(btc, day))
             elif side == "WITHDRAWAL":
-                from utxoproof.cli import _empty_inventory_error
+                from utxoproof.cli import _apply_withdrawal
 
-                if running_btc <= 0:
-                    raise _empty_inventory_error(row)
+                running_btc, running_cost = _apply_withdrawal(running_btc, running_cost, btc, row)
                 need = btc
                 while need > 0 and lots:
                     take = min(lots[0].remaining_btc, need)
