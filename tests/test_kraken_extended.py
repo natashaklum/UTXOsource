@@ -341,4 +341,4 @@ def test_sell_after_over_withdrawal_still_raises(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match=r"empty inventory"):
-        compute_year(csv_path, 2023)
+        compute_year(csv_path, 2023, strict=True)

@@ -121,7 +121,11 @@ def _apply_withdrawal(
 
 
 def compute_details(
-    csv_path: str | Path, year: int, price_at: PriceAt | None = None
+    csv_path: str | Path,
+    year: int,
+    price_at: PriceAt | None = None,
+    *,
+    strict: bool = False,
 ) -> ComputeResult:
     """Per-disposal moving-average detail for ``year`` plus the yearly total.
 
@@ -129,6 +133,9 @@ def compute_details(
     disposal has ``date, btc, eur_per_btc, proceeds_eur, cost_basis_eur,
     gain_eur``. Buy fees join the cost pool, sell fees reduce proceeds.
     DEPOSIT rows enter the pool at stated or receipt-date price.
+    Opening balance seeds the pool with pre-export holdings so that disposals
+    after the first row are funded from tracked inventory. If ``strict`` is True
+    an unfunded disposal raises ValueError instead of clamping with warning.
     """
     total_btc = Decimal("0")
     total_cost = Decimal("0")
@@ -155,11 +162,25 @@ def compute_details(
                 total_btc, total_cost = _apply_withdrawal(total_btc, total_cost, btc, row)
             elif side == "SELL":
                 if total_btc <= Decimal("0"):
-                    raise _empty_inventory_error(row)
-                avg_unit = total_cost / total_btc if total_btc else Decimal("0")
-                cost_basis = avg_unit * btc
-                proceeds = btc * price - fee
-                gain = proceeds - cost_basis
+                    if strict:
+                        raise _empty_inventory_error(row)
+                    # Lenient: clamp at zero with a loud warning, book zero gain.
+                    # Only a genuinely unfunded SELL still raises when --strict is used.
+                    import sys
+                    print(
+                        f"WARNING: sale of {btc:f} BTC on {row.get('date', '?')} has no "
+                        f"tracked inventory (pool is {total_btc:f}); gain booked as 0, "
+                        "pre-export holdings are not modeled — use --strict to abort",
+                        file=sys.stderr,
+                    )
+                    cost_basis = Decimal("0")
+                    proceeds = btc * price - fee
+                    gain = Decimal("0")
+                else:
+                    avg_unit = total_cost / total_btc if total_btc else Decimal("0")
+                    cost_basis = avg_unit * btc
+                    proceeds = btc * price - fee
+                    gain = proceeds - cost_basis
                 if row_year == year:
                     realised_gain += gain
                     disposals.append(
@@ -329,6 +350,24 @@ def _add_price_history_arg(sub: argparse.ArgumentParser) -> None:
         default=None,
         help="CSV (date,close_eur) for receipt-date deposit valuation",
     )
+    sub.add_argument(
+        "--opening-btc",
+        type=Decimal,
+        default=None,
+        help="Seed pool with this many BTC at opening (pre-export holdings)",
+    )
+    sub.add_argument(
+        "--opening-price",
+        type=Decimal,
+        default=None,
+        help="Price per BTC for seeding the opening pool (paired with --opening-btc)",
+    )
+    sub.add_argument(
+        "--opening-cost",
+        type=Decimal,
+        default=None,
+        help="Cost basis for seeding the opening pool (overrides opening-price * opening-btc)",
+    )
 
 
 class DiagDisposal(TypedDict):
@@ -380,7 +419,11 @@ def print_diagnosis(result: DiagResult) -> int:
 
 
 def compute_year(
-    csv_path: str | Path, year: int, price_at: PriceAt | None = None
+    csv_path: str | Path,
+    year: int,
+    price_at: PriceAt | None = None,
+    *,
+    strict: bool = False,
 ) -> dict[str, Decimal]:
     """Compute realised gain/loss for ``year`` from a simple manual CSV.
 
@@ -388,10 +431,17 @@ def compute_year(
     ``YYYY-MM-DD`` and ``side`` is ``BUY`` or ``SELL``. Moving-average cost
     basis; buy fees join the cost pool, sell fees reduce proceeds.
     """
-    return {"gain_loss_eur": compute_details(csv_path, year, price_at)["gain_loss_eur"]}
+    return {"gain_loss_eur": compute_details(
+        csv_path, year, price_at, strict=strict
+    )["gain_loss_eur"]}
 
 
-def compute_inventory(csv_path: str | Path, price_at: PriceAt | None = None) -> Inventory:
+def compute_inventory(
+    csv_path: str | Path,
+    price_at: PriceAt | None = None,
+    *,  # keyword-only after this
+    strict: bool = False,
+) -> Inventory:
     """Whole-file moving-average inventory (BTC + cost basis, no valuation)."""
     total_btc = Decimal("0")
     total_cost = Decimal("0")
@@ -412,10 +462,20 @@ def compute_inventory(csv_path: str | Path, price_at: PriceAt | None = None) -> 
                 total_btc, total_cost = _apply_withdrawal(total_btc, total_cost, btc, row)
             elif side == "SELL":
                 if total_btc <= Decimal("0"):
-                    raise _empty_inventory_error(row)
-                basis = total_cost / total_btc * btc if total_btc else Decimal("0")
-                total_btc -= btc
-                total_cost -= basis
+                    # Lenient: clamp at zero with a loud warning, no basis consumed.
+                    import sys
+                    print(
+                        f"WARNING: sale of {btc:f} BTC has no tracked inventory "
+                        f"(pool is {total_btc:f}); gain booked as 0, "
+                        "pre-export holdings are not modeled — use --strict to abort",
+                        file=sys.stderr,
+                    )
+                    # still consume 0 btc and 0 cost
+                    pass
+                else:
+                    basis = total_cost / total_btc * btc if total_btc else Decimal("0")
+                    total_btc -= btc
+                    total_cost -= basis
             else:
                 raise ValueError(f"Unknown side {row['side']!r}")
     return {"btc": total_btc, "cost_eur": total_cost}
