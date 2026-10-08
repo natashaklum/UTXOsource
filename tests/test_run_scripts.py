@@ -15,8 +15,9 @@ def _run(script: str, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     merged["UTXOPROOF_BIN"] = os.path.join(
         os.path.dirname(__import__("sys").executable), "utxoproof"
     )
-    return subprocess.run(
-        ["bash", str(REPO / "examples" / script)],
+    # S603/S607: fixed argv (bash + repo-relative script under test); no user input.
+    return subprocess.run(  # noqa: S603
+        ["bash", str(REPO / "examples" / script)],  # noqa: S607
         capture_output=True,
         text=True,
         env=merged,
