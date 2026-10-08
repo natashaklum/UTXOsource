@@ -1,5 +1,9 @@
-"""End-to-end runs of examples/prepare.sh and refresh.sh (offline fixtures)."""
+"""End-to-end runs of examples/run.sh (offline fixtures).
 
+Two modes:
+  MODE=prepare   (default in the script)   — stops if check reports shortfalls
+  MODE=refresh   — idempotent rerun; shortfalls print but do not stop
+"""
 import os
 import stat
 import subprocess
@@ -16,8 +20,8 @@ def _run(script: str, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
         os.path.dirname(__import__("sys").executable), "utxoproof"
     )
     # S603/S607: fixed argv (bash + repo-relative script under test); no user input.
-    return subprocess.run(  # noqa: S603
-        ["bash", str(REPO / "examples" / script)],  # noqa: S607
+    return subprocess.run(
+        ["bash", str(REPO / "examples" / script)],
         capture_output=True,
         text=True,
         env=merged,
@@ -38,13 +42,14 @@ def _shortfall_ledgers(path: Path) -> None:
 def test_refresh_end_to_end(tmp_path: Path) -> None:
     data = tmp_path / "data"
     proc = _run(
-        "refresh.sh",
+        "run.sh",
         {
             "DATA_DIR": str(data),
             "KRAKEN_LEDGERS": str(FIXTURES / "kraken_ledgers_2023.csv"),
             "KRAKEN_TRADES": "",
             "TAX_YEAR": "2023",
             "BTC_PRICE": "40000",
+            "MODE": "refresh",
         },
     )
     assert proc.returncode == 0, proc.stderr[-2000:]
@@ -58,13 +63,14 @@ def test_prepare_aborts_on_shortfalls(tmp_path: Path) -> None:
     ledgers = tmp_path / "ledgers.csv"
     _shortfall_ledgers(ledgers)
     proc = _run(
-        "prepare.sh",
+        "run.sh",
         {
             "DATA_DIR": str(tmp_path / "data"),
             "KRAKEN_LEDGERS": str(ledgers),
             "KRAKEN_TRADES": "",
             "TAX_YEAR": "2023",
             "BTC_PRICE": "40000",
+            "MODE": "prepare",
         },
     )
     assert proc.returncode != 0
@@ -72,6 +78,6 @@ def test_prepare_aborts_on_shortfalls(tmp_path: Path) -> None:
 
 
 def test_scripts_are_executable() -> None:
-    for name in ("prepare.sh", "refresh.sh"):
+    for name in ("run.sh",):
         mode = (REPO / "examples" / name).stat().st_mode
         assert mode & stat.S_IXUSR, name
