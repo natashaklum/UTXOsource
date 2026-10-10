@@ -38,11 +38,18 @@ set -euo pipefail
 : "${ACCOUNT:=0}"                 # BIP44 account
 : "${ENTITIES_FILE:=}"            # path to entities TOML; empty skips portfolio
 : "${MODE:=prepare}"             # prepare | refresh
+: "${DEBUG:=}"                    # non-empty prints each on-chain command (password redacted)
 
 UTXOPROOF_BIN="${UTXOPROOF_BIN:-utxoproof}"
 
 log() { printf '==> %s\n' "$*"; }
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+# Debug helper: prints the effective on-chain target. Password is never logged.
+dbg_rpc() {
+    if [ -n "$DEBUG" ]; then
+        log "debug: rpc_url=$RPC_URL rpc_user=${RPC_USER:-<none>} wallet=$WALLET bin=$UTXOPROOF_BIN"
+    fi
+}
 
 # ---------------------------------------------------------------------------
 # Stage: import (same for both modes)
@@ -86,7 +93,11 @@ stage_compute() {
 stage_setup() {
     log "setup: initialize on-chain wallet from xpub"
     if [ -n "$XPUB" ] && [ -n "$FINGERPRINT" ]; then
+        log "setup: wallet $WALLET via $RPC_URL (user ${RPC_USER:-<none>})"
+        dbg_rpc
         setup_out=$("$UTXOPROOF_BIN" setup \
+            --rpc-url "$RPC_URL" --rpc-user "$RPC_USER" \
+            --rpc-password "$RPC_PASSWORD" \
             --xpub "$XPUB" --fingerprint "$FINGERPRINT" \
             --wallet "$WALLET" \
             --purpose "$PURPOSE" --coin "$COIN" --account "$ACCOUNT" 2>&1) || \
@@ -102,6 +113,8 @@ stage_setup() {
 stage_sync() {
     log "sync: pull new on-chain transactions into SQLite"
     if [ -n "$XPUB" ] && [ -n "$FINGERPRINT" ]; then
+        log "sync: wallet $WALLET via $RPC_URL (user ${RPC_USER:-<none>})"
+        dbg_rpc
         sync_out=$("$UTXOPROOF_BIN" sync --db "$DATA_DIR/utxoproof.db" \
             --rpc-url "$RPC_URL" --rpc-user "$RPC_USER" \
             --rpc-password "$RPC_PASSWORD" --wallet "$WALLET" \
