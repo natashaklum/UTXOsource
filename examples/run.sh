@@ -100,8 +100,10 @@ stage_setup() {
             --rpc-password "$RPC_PASSWORD" \
             --xpub "$XPUB" --fingerprint "$FINGERPRINT" \
             --wallet "$WALLET" \
-            --purpose "$PURPOSE" --coin "$COIN" --account "$ACCOUNT" 2>&1) || \
-            log "warning: setup skipped (node unreachable or RPC error)\n$setup_out"
+            --purpose "$PURPOSE" --coin "$COIN" --account "$ACCOUNT" 2>&1) || {
+            log "warning: setup skipped (node unreachable or RPC error)"
+            printf '%s\n' "$setup_out"
+        }
     else
         log "note: setup skipped (set XPUB+FINGERPRINT to enable on-chain stages)"
     fi
@@ -117,9 +119,10 @@ stage_sync() {
         dbg_rpc
         sync_out=$("$UTXOPROOF_BIN" sync --db "$DATA_DIR/utxoproof.db" \
             --rpc-url "$RPC_URL" --rpc-user "$RPC_USER" \
-            --rpc-password "$RPC_PASSWORD" --wallet "$WALLET" \
-            --purpose "$PURPOSE" --coin "$COIN" --account "$ACCOUNT" 2>&1) || \
-            log "warning: on-chain sync skipped (node unreachable or RPC error)\n$sync_out"
+            --rpc-password "$RPC_PASSWORD" --wallet "$WALLET" 2>&1) || {
+            log "warning: on-chain sync skipped (node unreachable or RPC error)"
+            printf '%s\n' "$sync_out"
+        }
     else
         log "note: on-chain sync skipped (set XPUB+FINGERPRINT to enable)"
     fi
