@@ -474,6 +474,7 @@ def build_provenance_context(
     max_depth: int = 100,
     evidence_root: str | Path | None = None,
     evidence_url_prefix: str = "",
+    funding: dict[str, str] | None = None,
 ) -> dict[str, object]:
     """Preformatted context dict for the provenance section."""
     from utxoproof.advisory import analyze_utxo
@@ -482,7 +483,7 @@ def build_provenance_context(
 
     seed_source_kyc(db)
     propagate_graph(db)
-    steps = build_provenance_chain(txid, vout, db, price_at, max_depth)
+    steps = build_provenance_chain(txid, vout, db, price_at, max_depth, funding)
     if not steps:
         raise ValueError(f"UTXO {txid}:{vout} not found")
     first, selected = steps[0], steps[-1]
@@ -524,6 +525,8 @@ def build_provenance_context(
         "kyc_fraction": f"{selected.kyc_fraction:.0%}",
         "days_held": days_held,
         "flags": ",".join(sorted(f.value for f in advisory.flags)),
+        "truncated": len(steps) >= max_depth,
+        "max_depth": max_depth,
         "steps": [
             {
                 "n": s.step_number,
@@ -559,6 +562,7 @@ def write_provenance_page(
     demo_notice: str = "",
     evidence_root: str | Path | None = None,
     evidence_url_prefix: str = "",
+    funding: dict[str, str] | None = None,
 ) -> Path:
     """Render the chain-of-custody page for ``txid:vout`` into ``out_dir``."""
     out = Path(out_dir)
@@ -578,6 +582,7 @@ def write_provenance_page(
                 max_depth,
                 evidence_root,
                 evidence_url_prefix,
+                funding,
             ),
             intro=INTROS["provenance"],
             disclaimer=DISCLAIMER,
@@ -835,6 +840,7 @@ def write_full_report(
     demo_notice: str = "",
     evidence_root: str | Path | None = None,
     evidence_url_prefix: str = "",
+    funding: dict[str, str] | None = None,
 ) -> Path:
     """Compose every section into one printable ``fullreport.html``."""
     from utxoproof.advisory import analyze_wallet
@@ -861,6 +867,7 @@ def write_full_report(
                 max_depth,
                 evidence_root,
                 evidence_url_prefix,
+                funding,
             )
         )
         sections.append({"id": f"provenance-{txid}-{vout}", "title": f"Provenance {txid}:{vout}"})

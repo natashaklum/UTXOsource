@@ -601,6 +601,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     report.add_argument("--entities", default=None, help="Entities TOML (overview section)")
     report.add_argument("--wallet", default="utxoproof_watchonly", help="Synced wallet")
+    report.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (funding labels)")
     setup = sub.add_parser("setup", help="Create watch-only wallet, import xpubs")
     setup.add_argument("--rpc-url", default="http://127.0.0.1:8332")
     setup.add_argument("--rpc-user", default="")
@@ -645,10 +646,12 @@ def build_parser() -> argparse.ArgumentParser:
     prov.add_argument("--depth", type=int, default=100, help="Max chain depth")
     prov.add_argument("--out", default=None, help="Output directory")
     prov.add_argument("--evidence-dir", default=None, help="Evidence root")
+    prov.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (funding labels)")
     port = sub.add_parser("portfolio", help="Entity overview from synced UTXOs")
     port.add_argument("--db", default=None, help="SQLite DB (<data-dir>/utxoproof.db)")
     port.add_argument("--entities", required=True, help="Entities TOML file")
     port.add_argument("--wallet", default="utxoproof_watchonly", help="Synced wallet")
+    port.add_argument("--ledgers", default=None, help="Kraken ledgers.csv (funding labels)")
     port.add_argument("--price", type=Decimal, default=None, help="BTC/EUR price override")
     port.add_argument("--as-of", default=None, help="As-of date YYYY-MM-DD (default: today)")
     port.add_argument("--out", default=None, help="Output directory for overview.html + entities/")
@@ -706,6 +709,11 @@ def _write_full_from_args(args: argparse.Namespace, communal: Decimal, config: C
             load_price_series(bundled_history_path()),
             label="BTC/EUR daily close, last 12 months",
         )
+    funding_matches: dict[str, str] = {}
+    if getattr(args, "ledgers", None):
+        from utxoproof.linking import funding_from_ledgers
+
+        funding_matches = funding_from_ledgers(args.ledgers, db).matches
     return write_full_report(
         db=db,
         csv_path=args.input,
@@ -720,6 +728,7 @@ def _write_full_from_args(args: argparse.Namespace, communal: Decimal, config: C
         provenance_targets=targets,
         portfolio=portfolio,
         price_history_svg=price_history_svg,
+        funding=funding_matches,
     )
 
 
@@ -860,6 +869,7 @@ def _run_privacy(args: argparse.Namespace) -> int:
 
 
 def _run_portfolio(args: argparse.Namespace) -> int:
+    from utxoproof.linking import funding_from_ledgers
     from utxoproof.portfolio import (
         load_entities,
         load_price_series,
@@ -867,7 +877,11 @@ def _run_portfolio(args: argparse.Namespace) -> int:
         svg_sparkline,
     )
     from utxoproof.price_oracle import bundled_history_path
-    from utxoproof.reports import write_entity_pages, write_overview_page
+    from utxoproof.reports import (
+        write_entity_pages,
+        write_overview_page,
+        write_provenance_page,
+    )
 
     db = _open_db(str(db_path(args)))
     entities, fiat = load_entities(args.entities)
@@ -892,6 +906,11 @@ def _run_portfolio(args: argparse.Namespace) -> int:
         curve = oracle.get_btc_eur
         note = "daily close per acquisition date"
         price = oracle.get_btc_eur(as_of)
+    funding = funding_from_ledgers(args.ledgers, db)
+    for line in funding.ambiguous:
+        print(f"ambiguous funding: {line} — left unlabeled")
+    for line in funding.unmatched:
+        print(f"unmatched withdrawal: {line} — no chain receive in window")
     portfolio, advisories = portfolio_from_db(db, entities, fiat, args.wallet, curve, price, as_of)
     print(f"utxos: {len(portfolio.utxos)} btc={portfolio.btc_total:.8f}")
     for eid, label, value, share in portfolio.allocation():
@@ -910,6 +929,19 @@ def _run_portfolio(args: argparse.Namespace) -> int:
         for target in write_entity_pages(
             portfolio, "../provenance", Path(args.out) / "entities", flags_by_utxo
         ):
+            print(f"wrote {target}")
+        prov_dir = Path(args.out) / "provenance"
+        for utxo in portfolio.utxos:
+            target = write_provenance_page(
+                db,
+                utxo.txid,
+                utxo.vout,
+                curve,
+                price,
+                as_of,
+                prov_dir,
+                funding=funding.matches,
+            )
             print(f"wrote {target}")
     return 0
 
@@ -949,8 +981,13 @@ def _run_provenance(args: argparse.Namespace) -> int:
     print(
         f"chain: {len(steps)} steps back to {steps[0].txid}:{steps[0].vout}" if steps else "empty"
     )
+    if steps and len(steps) >= args.depth:
+        print(f"note: chain truncated at depth cap {args.depth} — earliest history not shown")
     print(f"price_note: {note}")
     if args.out:
+        from utxoproof.linking import funding_from_ledgers
+
+        funding = funding_from_ledgers(args.ledgers, db)
         target = write_provenance_page(
             db,
             txid,
@@ -961,6 +998,7 @@ def _run_provenance(args: argparse.Namespace) -> int:
             args.out,
             args.depth,
             evidence_root=evidence_root(args),
+            funding=funding.matches,
         )
         print(f"wrote {target}")
     return 0

@@ -106,6 +106,7 @@ Days held since earliest traced acquisition: {{ p.days_held }}.
 Advisory flags: {{ p.flags }}.</p>
 
 <h3>Provenance chain (oldest first)</h3>
+{% if p.truncated %}<p><strong>Note:</strong> chain truncated at {{ p.max_depth }} steps — earliest history not shown. Re-run with a higher depth cap if needed.</p>{% endif %}
 <table>
   <tr><th>Step</th><th>Date</th><th>Block</th><th>Event</th><th>BTC</th><th>EUR/BTC</th><th>Value (EUR)</th><th>KYC</th><th>Evidence</th></tr>
   {% for s in p.steps %}

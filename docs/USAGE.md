@@ -148,9 +148,14 @@ utxoproof portfolio --db <data-dir>/utxoproof.db --entities entities.toml \
   --price 40000 --out <data-dir>/portfolio
 ```
 
-`run.sh` runs this as its portfolio stage whenever `ENTITIES_FILE` is set,
-and `report --full --entities entities.toml` folds the overview into the full
-report.
+That writes `overview/overview.html`, `entities/<id>.html`, and
+`provenance/provenance_<txid>_<vout>.html` per unspent UTXO, so entity-page
+UTXO links resolve. Pass `--ledgers ledgers.csv` (also wired in `run.sh` via
+`KRAKEN_LEDGERS`) to label each chain receipt with the Kraken withdrawal that
+funded it — amount + date matched, ambiguous or unmatched withdrawals reported
+and left unlabeled, never guessed. `report --full --entities entities.toml`
+folds the overview into the full report the same way. Provenance pages state
+when the chain hit the depth cap instead of silently truncating.
 
 ## 3. Configuration (`utxoproof.toml`)
 

@@ -17,6 +17,14 @@ from typing import Any
 SAT_PER_BTC = 100_000_000
 
 
+def _funding_evidence(existing: str, txid: str, funding: dict[str, str] | None) -> str:
+    """Attach an exchange-funding label to a step's evidence (plan v5 Sec. 10)."""
+    label = (funding or {}).get(txid, "")
+    if not label:
+        return existing
+    return f"{existing}; {label}" if existing else label
+
+
 @dataclass
 class ProvenanceStep:
     step_number: int
@@ -110,8 +118,14 @@ def build_provenance_chain(
     db: sqlite3.Connection,
     price_at: Callable[[datetime.date], Decimal],
     max_depth: int = 100,
+    funding: dict[str, str] | None = None,
 ) -> list[ProvenanceStep]:
-    """Walk back from ``txid:vout`` to origin. Returns steps oldest-first."""
+    """Walk back from ``txid:vout`` to origin. Returns steps oldest-first.
+
+    ``funding`` maps a chain txid to an exchange-funding label (see
+    ``utxoproof.linking``); matching steps carry it as source evidence so the
+    provenance view shows which withdrawal funded the receipt.
+    """
     steps: list[ProvenanceStep] = []
     visited: set[tuple[str, int]] = set()
     current: tuple[str, int] | None = (txid, vout)
@@ -157,7 +171,9 @@ def build_provenance_chain(
                 kyc_fraction=Decimal(output["kyc_fraction"]),
                 source_type=output["source_type"] or "unknown",
                 source_label=output["source_label"] or "",
-                source_evidence=output["source_evidence"] or "",
+                source_evidence=_funding_evidence(
+                    output["source_evidence"] or "", output["txid"], funding
+                ),
                 event_description=classify_event(
                     output["source_type"],
                     output["source_label"],

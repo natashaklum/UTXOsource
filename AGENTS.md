@@ -77,6 +77,10 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   `load_entities` + `portfolio_from_db` in `utxoproof/portfolio.py`, surfaced via
   `utxoproof portfolio` and `report --full --entities`); the synced wallet's
   UTXOs land in the entity whose `wallet` matches.
+- Exchange funding links live in `utxoproof/linking.py` (Kraken withdrawal =
+  exact sats + date window; ambiguous/unmatched reported, never guessed) and
+  surface as provenance-step evidence (`--ledgers` on `portfolio`/`provenance`/
+  `report`); depth-cap truncation is rendered as a note, not silent.
 - Dashboard lives in `utxoproof/portfolio.py` (entities, rollups, inline SVG
   charts — no JavaScript). Overview -> entity pages -> provenance pages;
   chart HTML is trusted generator output (`| safe` in templates, everything

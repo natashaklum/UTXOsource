@@ -138,6 +138,7 @@ stage_portfolio() {
             port_out=$("$UTXOPROOF_BIN" portfolio --db "$DATA_DIR/utxoproof.db" \
                 --entities "$ENTITIES_FILE" --wallet "$WALLET" \
                 --price "${BTC_PRICE:-40000}" \
+                ${KRAKEN_LEDGERS:+--ledgers "$KRAKEN_LEDGERS"} \
                 --out "$DATA_DIR/portfolio" 2>&1) || {
                 log "warning: portfolio build skipped (entity config or DB issue)"
                 printf '%s\n' "$port_out"
