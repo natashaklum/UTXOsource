@@ -45,7 +45,7 @@ log() { printf '==> %s\n' "$*"; }
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
-# Shared stage: import (same for both modes)
+# Stage: import (same for both modes)
 # ---------------------------------------------------------------------------
 stage_import() {
     log "import: kraken ledgers -> manual CSV"
@@ -69,7 +69,6 @@ stage_check() {
     log "check: pool coverage (never crashes, shortfalls named)"
     out=$("$UTXOPROOF_BIN" check --input "$DATA_DIR/manual.csv" 2>&1) || true
     printf '%s\n' "$out"
-    # Return shortfall count via stdout
     printf '%s\n' "$out" | tail -n 1
 }
 
@@ -79,6 +78,22 @@ stage_check() {
 stage_compute() {
     log "compute: year $TAX_YEAR"
     "$UTXOPROOF_BIN" compute --input "$DATA_DIR/manual.csv" --year "$TAX_YEAR"
+}
+
+# ---------------------------------------------------------------------------
+# Stage: setup on-chain wallet
+# ---------------------------------------------------------------------------
+stage_setup() {
+    log "setup: initialize on-chain wallet from xpub"
+    if [ -n "$XPUB" ] && [ -n "$FINGERPRINT" ]; then
+        "$UTXOPROOF_BIN" setup \
+            --xpub "$XPUB" --fingerprint "$FINGERPRINT" \
+            --wallet "$WALLET" \
+            --purpose "$PURPOSE" --coin "$COIN" --account "$ACCOUNT" \
+            2>/dev/null || log "warning: setup skipped (node unreachable or RPC error)"
+    else
+        log "note: setup skipped (set XPUB+FINGERPRINT to enable on-chain stages)"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -173,8 +188,9 @@ case "$MODE" in
                 fail "coverage has shortfalls ($shortfalls) — aborting per prepare mode; investigate with 'utxoproof check' or run with MODE=refresh"
                 ;;
         esac
-        stage_compute
+        stage_setup
         stage_sync
+        stage_portfolio
         stage_report
         stage_status
         ;;
@@ -183,6 +199,7 @@ case "$MODE" in
         stage_import
         stage_check || true   # always prints; never aborts
         stage_compute
+        stage_setup
         stage_sync
         stage_portfolio
         stage_report
