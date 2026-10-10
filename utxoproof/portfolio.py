@@ -9,11 +9,16 @@ print-friendly).
 from __future__ import annotations
 
 import csv
+import datetime
 import html
+import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 from typing import ClassVar
+
+from utxoproof.advisory import UTXOAdvisory
 
 
 @dataclass
@@ -22,6 +27,7 @@ class Entity:
     kind: str  # wallet | bank | exchange
     label: str
     detail: str = ""
+    wallet: str = ""  # synced on-chain wallet whose UTXOs belong here
 
 
 @dataclass
@@ -243,3 +249,95 @@ def load_price_series(
     window = rows[-days:]
     step = max(1, len(window) // max_points)
     return window[::step]
+
+
+def load_entities(path: str | Path) -> tuple[list[Entity], list[FiatHolding]]:
+    """Parse an entities TOML file (see ``examples/entities.example.toml``).
+
+    ``[[entities]]`` entries need ``id`` (``kind``/``label``/``detail``/``wallet``
+    optional; ``wallet`` names the synced on-chain wallet whose UTXOs belong to
+    the entity, default ``utxoproof_watchonly``). ``[[fiat]]`` entries attach a
+    euro balance to an entity by ``entity_id``.
+    """
+    import tomllib
+
+    with open(Path(path), "rb") as f:
+        data = tomllib.load(f)
+    entities = [
+        Entity(
+            id=str(e["id"]),
+            kind=str(e.get("kind", "wallet")),
+            label=str(e.get("label", e["id"])),
+            detail=str(e.get("detail", "")),
+            wallet=str(e.get("wallet", "")),
+        )
+        for e in data.get("entities", [])
+    ]
+    if not entities:
+        raise ValueError(f"no [[entities]] in {path}")
+    fiat = [
+        FiatHolding(
+            entity_id=str(f["entity_id"]),
+            amount_eur=Decimal(str(f["amount_eur"])),
+            note=str(f.get("note", "")),
+        )
+        for f in data.get("fiat", [])
+    ]
+    known = {e.id for e in entities}
+    for holding in fiat:
+        if holding.entity_id not in known:
+            raise ValueError(f"fiat entry for unknown entity {holding.entity_id!r} in {path}")
+    return entities, fiat
+
+
+def portfolio_from_db(
+    db: sqlite3.Connection,
+    entities: list[Entity],
+    fiat: list[FiatHolding],
+    wallet: str,
+    price_at: Callable[[datetime.date], Decimal],
+    current_price_eur: Decimal,
+    as_of: datetime.date,
+) -> tuple[Portfolio, list[UTXOAdvisory]]:
+    """Build a ``Portfolio`` from a synced on-chain DB plus entity config.
+
+    Every unspent output lands in the entity whose ``wallet`` matches the
+    synced wallet (falling back to the single entity when only one is
+    declared). Returns ``(portfolio, advisories)`` — the advisories carry
+    per-UTXO cost basis, value, KYC status and flags for entity pages.
+    """
+    from utxoproof.advisory import analyze_wallet
+    from utxoproof.kyc import propagate_graph, seed_source_kyc
+
+    seed_source_kyc(db)
+    propagate_graph(db)
+    advisories = analyze_wallet(db, price_at, current_price_eur, as_of)
+    named = [e for e in entities if e.wallet == wallet]
+    if named:
+        owner_id = named[0].id
+    elif len(entities) == 1:
+        owner_id = entities[0].id
+    else:
+        defaulted = [e for e in entities if not e.wallet]
+        owner_id = defaulted[0].id if defaulted else entities[0].id
+    utxos = [
+        UtxoHolding(
+            owner_id,
+            a.txid,
+            a.vout,
+            a.amount_btc,
+            a.current_value_eur,
+            a.kyc_status,
+            a.acquisition_cost_eur,
+        )
+        for a in advisories
+    ]
+    return (
+        Portfolio(
+            entities=entities,
+            utxos=utxos,
+            fiat=list(fiat),
+            current_price_eur=current_price_eur,
+        ),
+        advisories,
+    )

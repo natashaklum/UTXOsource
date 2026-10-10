@@ -114,3 +114,96 @@ def test_overview_and_entity_pages(tmp_path: Path) -> None:
     bank = (tmp_path / "entities" / "bank.html").read_text(encoding="utf-8")
     assert "12,500.00" in bank
     assert "provenance_" not in bank  # no UTXOs, no provenance links
+
+
+def _sample_db_with_spendable() -> object:
+    from utxoproof.kyc import create_sample_graph
+
+    return create_sample_graph()
+
+
+def test_load_entities_example(tmp_path: Path) -> None:
+    import shutil
+
+    from utxoproof.portfolio import load_entities
+
+    src = Path(__file__).resolve().parent.parent / "examples" / "entities.example.toml"
+    dst = tmp_path / "entities.toml"
+    shutil.copy(src, dst)
+    entities, fiat = load_entities(dst)
+    assert [e.id for e in entities] == ["ledger-savings", "ing-savings", "kraken-eur"]
+    assert entities[0].wallet == "utxoproof_watchonly"
+    assert sum((f.amount_eur for f in fiat), Decimal("0")) == Decimal("15700")
+
+
+def test_load_entities_rejects_unknown_fiat_entity(tmp_path: Path) -> None:
+    import pytest
+
+    from utxoproof.portfolio import load_entities
+
+    cfg = tmp_path / "bad.toml"
+    cfg.write_text(
+        '[[entities]]\nid = "only"\n[[fiat]]\nentity_id = "ghost"\namount_eur = "5"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="unknown entity"):
+        load_entities(cfg)
+
+
+def test_portfolio_from_db_assigns_utxos_to_wallet_entity() -> None:
+    import datetime
+
+    from utxoproof.portfolio import Entity, portfolio_from_db
+
+    db = _sample_db_with_spendable()
+    entities = [Entity("cold", "wallet", "Cold", "", wallet="w1")]
+    portfolio, advisories = portfolio_from_db(
+        db,
+        entities,
+        [],
+        "w1",
+        lambda _day: Decimal("20000"),
+        Decimal("40000"),
+        datetime.date(2024, 6, 1),
+    )
+    assert advisories, "sample graph must have unspent outputs"
+    assert {u.entity_id for u in portfolio.utxos} == {"cold"}
+    assert portfolio.btc_total == sum((a.amount_btc for a in advisories), Decimal("0"))
+
+
+def test_portfolio_cli_writes_overview_and_entities(tmp_path: Path) -> None:
+    import shutil
+    import sqlite3
+
+    from utxoproof.cli import main
+    from utxoproof.kyc import create_sample_graph
+
+    db_path = tmp_path / "t.db"
+    dest = sqlite3.connect(str(db_path))
+    create_sample_graph().backup(dest)
+    dest.close()
+    shutil.copy(
+        Path(__file__).resolve().parent.parent / "examples" / "entities.example.toml",
+        tmp_path / "entities.toml",
+    )
+    out = tmp_path / "site"
+    assert (
+        main(
+            [
+                "portfolio",
+                "--db",
+                str(db_path),
+                "--entities",
+                str(tmp_path / "entities.toml"),
+                "--price",
+                "40000",
+                "--as-of",
+                "2024-06-01",
+                "--out",
+                str(out),
+            ]
+        )
+        == 0
+    )
+    assert (out / "overview" / "overview.html").is_file()
+    assert (out / "entities" / "ledger-savings.html").is_file()

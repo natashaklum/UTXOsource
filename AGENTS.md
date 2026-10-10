@@ -69,9 +69,14 @@ DaLI is intentionally absent until its sprints (needs a C toolchain).
   thumbnails for small images, links otherwise.
 - One data dir: `utxoproof/paths.py` (`--data-dir` > `$UTXOPROOF_DATA_DIR` >
   `~/.utxoproof`); `--db`/`--evidence-dir` override per call.
-- Runnable workflows live in `examples/` (`run-lib.sh` shared stages,
-  `prepare.sh` stops on shortfalls, `refresh.sh` idempotent); covered by
-  `tests/test_run_scripts.py` driving them against fixtures.
+- Runnable workflows live in `examples/` (single self-contained `run.sh`,
+  `MODE=prepare` stops on shortfalls, `MODE=refresh` idempotent, incl.
+  `setup`/`sync`/`portfolio` on-chain stages); covered by
+  `tests/test_run_scripts.py` driving it against fixtures.
+- Entities for the overview come from a TOML file (`examples/entities.example.toml`;
+  `load_entities` + `portfolio_from_db` in `utxoproof/portfolio.py`, surfaced via
+  `utxoproof portfolio` and `report --full --entities`); the synced wallet's
+  UTXOs land in the entity whose `wallet` matches.
 - Dashboard lives in `utxoproof/portfolio.py` (entities, rollups, inline SVG
   charts — no JavaScript). Overview -> entity pages -> provenance pages;
   chart HTML is trusted generator output (`| safe` in templates, everything

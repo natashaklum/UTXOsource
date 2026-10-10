@@ -106,25 +106,51 @@ utxoproof --data-dir /tmp/throwaway status --input manual.csv --price 40000
 For a first real-data trial, point the variable at an empty folder: the worst
 case is one folder to delete.
 
-## 2c. Complete runs: `prepare.sh` and `refresh.sh`
+## 2c. Complete runs: `run.sh` (`MODE=prepare` / `MODE=refresh`)
 
-`examples/` holds two runnable scripts with the settings on top — copy one
-next to your data dir and edit the paths, or override any variable from the
+`examples/run.sh` is one self-contained script with the settings on top — copy
+it next to your data dir and edit the paths, or override any variable from the
 environment (`DATA_DIR`, `KRAKEN_LEDGERS`, `KRAKEN_TRADES`, `TAX_YEAR`,
-`BTC_PRICE`, `CONFIG_FILE`, plus `UTXOPROOF_BIN` to point at your install):
+`BTC_PRICE`, `CONFIG_FILE`, `XPUB`, `FINGERPRINT`, `RPC_URL`, `ENTITIES_FILE`,
+plus `UTXOPROOF_BIN` to point at your install):
 
 ```bash
-cp examples/prepare.sh ~/utxoproof-data/prepare.sh
-$EDITOR ~/utxoproof-data/prepare.sh   # set KRAKEN_LEDGERS etc.
-bash ~/utxoproof-data/prepare.sh      # import -> check -> compute -> report
-bash ~/utxoproof-data/refresh.sh      # repeatable: refresh + alltime
+cp examples/run.sh ~/utxoproof-data/run.sh
+$EDITOR ~/utxoproof-data/run.sh   # set KRAKEN_LEDGERS etc.
+bash ~/utxoproof-data/run.sh      # prepare: import -> check -> compute -> report
+MODE=refresh bash ~/utxoproof-data/run.sh   # repeatable: refresh + alltime
 ```
 
-`prepare.sh` **stops** when `check` reports shortfalls — first runs deserve
-interrogation, not momentum. `refresh.sh` is idempotent (full rewrite, no
-merge logic) and safe to re-run or cron once you trust the data. Both print
-`==>` stage lines, both honor `UTXOPROOF_DATA_DIR`, and both are covered by
-end-to-end tests running them against fixtures.
+`MODE=prepare` (the default) **stops** when `check` reports shortfalls — first
+runs deserve interrogation, not momentum. `MODE=refresh` is idempotent (full
+rewrite, no merge logic) and safe to re-run or cron once you trust the data.
+Both print `==>` stage lines, both honor `UTXOPROOF_DATA_DIR`, and both are
+covered by end-to-end tests running them against fixtures.
+
+## 2d. On-chain wallets and the entity overview
+
+Exchange history alone never shows on-chain UTXOs. With a Bitcoin Core node
+reachable, set `XPUB` + `FINGERPRINT` (master fingerprint, 8 hex) and the RPC
+settings in `run.sh`: `setup` creates the watch-only wallet and imports
+`m/84'/0'/0'`-style descriptors (purpose/coin/account hardened, `/0/*` and
+`/1/*` below the account xpub), then `sync` pulls transactions into
+`utxoproof.db`. Verify with `utxoproof advise --db <data-dir>/utxoproof.db` —
+one line per unspent output — or `report --full` (advisory + provenance
+sections come from the DB; the tax/status pages stay exchange-CSV based).
+
+For the demo-style overview page (`overview/overview.html` with entities),
+copy `examples/entities.example.toml`, declare one `[[entities]]` per wallet /
+bank / exchange (the entity whose `wallet` matches the synced wallet owns the
+chain UTXOs; `[[fiat]]` rows attach euro balances), and run:
+
+```bash
+utxoproof portfolio --db <data-dir>/utxoproof.db --entities entities.toml \
+  --price 40000 --out <data-dir>/portfolio
+```
+
+`run.sh` runs this as its portfolio stage whenever `ENTITIES_FILE` is set,
+and `report --full --entities entities.toml` folds the overview into the full
+report.
 
 ## 3. Configuration (`utxoproof.toml`)
 

@@ -167,6 +167,7 @@ def compute_details(
                     # Lenient: clamp at zero with a loud warning, book zero gain.
                     # Only a genuinely unfunded SELL still raises when --strict is used.
                     import sys
+
                     print(
                         f"WARNING: sale of {btc:f} BTC on {row.get('date', '?')} has no "
                         f"tracked inventory (pool is {total_btc:f}); gain booked as 0, "
@@ -431,9 +432,9 @@ def compute_year(
     ``YYYY-MM-DD`` and ``side`` is ``BUY`` or ``SELL``. Moving-average cost
     basis; buy fees join the cost pool, sell fees reduce proceeds.
     """
-    return {"gain_loss_eur": compute_details(
-        csv_path, year, price_at, strict=strict
-    )["gain_loss_eur"]}
+    return {
+        "gain_loss_eur": compute_details(csv_path, year, price_at, strict=strict)["gain_loss_eur"]
+    }
 
 
 def compute_inventory(
@@ -464,6 +465,7 @@ def compute_inventory(
                 if total_btc <= Decimal("0"):
                     # Lenient: clamp at zero with a loud warning, no basis consumed.
                     import sys
+
                     print(
                         f"WARNING: sale of {btc:f} BTC has no tracked inventory "
                         f"(pool is {total_btc:f}); gain booked as 0, "
@@ -597,6 +599,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=Decimal,
         help="Communal surcharge rate (default: config [taxpayer])",
     )
+    report.add_argument("--entities", default=None, help="Entities TOML (overview section)")
+    report.add_argument("--wallet", default="utxoproof_watchonly", help="Synced wallet")
     setup = sub.add_parser("setup", help="Create watch-only wallet, import xpubs")
     setup.add_argument("--rpc-url", default="http://127.0.0.1:8332")
     setup.add_argument("--rpc-user", default="")
@@ -641,6 +645,13 @@ def build_parser() -> argparse.ArgumentParser:
     prov.add_argument("--depth", type=int, default=100, help="Max chain depth")
     prov.add_argument("--out", default=None, help="Output directory")
     prov.add_argument("--evidence-dir", default=None, help="Evidence root")
+    port = sub.add_parser("portfolio", help="Entity overview from synced UTXOs")
+    port.add_argument("--db", default=None, help="SQLite DB (<data-dir>/utxoproof.db)")
+    port.add_argument("--entities", required=True, help="Entities TOML file")
+    port.add_argument("--wallet", default="utxoproof_watchonly", help="Synced wallet")
+    port.add_argument("--price", type=Decimal, default=None, help="BTC/EUR price override")
+    port.add_argument("--as-of", default=None, help="As-of date YYYY-MM-DD (default: today)")
+    port.add_argument("--out", default=None, help="Output directory for overview.html + entities/")
     attach = sub.add_parser("attach", help="Register a supporting file (scan, PDF, screenshot)")
     attach.add_argument("--file", required=True, help="File to register (copied in)")
     attach.add_argument("--db", default=None, help="SQLite DB (default: <data-dir>/utxoproof.db)")
@@ -676,6 +687,25 @@ def _write_full_from_args(args: argparse.Namespace, communal: Decimal, config: C
         else datetime.datetime.now(datetime.UTC).date()
     )
     targets = _parse_utxo_targets(args, db)
+    portfolio = None
+    price_history_svg = ""
+    if getattr(args, "entities", None):
+        from utxoproof.portfolio import (
+            load_entities,
+            load_price_series,
+            portfolio_from_db,
+            svg_sparkline,
+        )
+        from utxoproof.price_oracle import bundled_history_path
+
+        entities, fiat = load_entities(args.entities)
+        portfolio, _advisories = portfolio_from_db(
+            db, entities, fiat, args.wallet, history, price, as_of
+        )
+        price_history_svg = svg_sparkline(
+            load_price_series(bundled_history_path()),
+            label="BTC/EUR daily close, last 12 months",
+        )
     return write_full_report(
         db=db,
         csv_path=args.input,
@@ -688,6 +718,8 @@ def _write_full_from_args(args: argparse.Namespace, communal: Decimal, config: C
         communal_rate=communal,
         classifier_cfg=config.classifier,
         provenance_targets=targets,
+        portfolio=portfolio,
+        price_history_svg=price_history_svg,
     )
 
 
@@ -824,6 +856,61 @@ def _run_privacy(args: argparse.Namespace) -> int:
     if args.out:
         target = write_privacy_page(db, args.out)
         print(f"wrote {target}")
+    return 0
+
+
+def _run_portfolio(args: argparse.Namespace) -> int:
+    from utxoproof.portfolio import (
+        load_entities,
+        load_price_series,
+        portfolio_from_db,
+        svg_sparkline,
+    )
+    from utxoproof.price_oracle import bundled_history_path
+    from utxoproof.reports import write_entity_pages, write_overview_page
+
+    db = _open_db(str(db_path(args)))
+    entities, fiat = load_entities(args.entities)
+    as_of = (
+        datetime.date.fromisoformat(args.as_of)
+        if args.as_of
+        else datetime.datetime.now(datetime.UTC).date()
+    )
+    price: Decimal
+    curve: Callable[[datetime.date], Decimal]
+    if args.price is not None:
+        price = Decimal(args.price)
+        note = "explicit --price"
+
+        def curve(_day: datetime.date) -> Decimal:
+            return price
+
+    else:
+        from utxoproof.price_oracle import EURPriceOracle
+
+        oracle = EURPriceOracle(db)
+        curve = oracle.get_btc_eur
+        note = "daily close per acquisition date"
+        price = oracle.get_btc_eur(as_of)
+    portfolio, advisories = portfolio_from_db(db, entities, fiat, args.wallet, curve, price, as_of)
+    print(f"utxos: {len(portfolio.utxos)} btc={portfolio.btc_total:.8f}")
+    for eid, label, value, share in portfolio.allocation():
+        print(f"entity {eid} ({label}): {value:,.2f} EUR ({share:.1f}%)")
+    print(f"net_worth_eur: {portfolio.net_worth_eur:,.2f}")
+    if args.out:
+        history = load_price_series(bundled_history_path())
+        sparkline = svg_sparkline(history, label="BTC/EUR daily close, last 12 months")
+        overview_target = write_overview_page(
+            portfolio, as_of.isoformat(), note, Path(args.out) / "overview", sparkline
+        )
+        print(f"wrote {overview_target}")
+        flags_by_utxo = {
+            f"{a.txid}:{a.vout}": ",".join(sorted(f.value for f in a.flags)) for a in advisories
+        }
+        for target in write_entity_pages(
+            portfolio, "../provenance", Path(args.out) / "entities", flags_by_utxo
+        ):
+            print(f"wrote {target}")
     return 0
 
 
@@ -1046,6 +1133,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_advise(args)
     if args.command == "provenance":
         return _run_provenance(args)
+    if args.command == "portfolio":
+        return _run_portfolio(args)
     if args.command == "attach":
         return _run_attach(args)
     return 1

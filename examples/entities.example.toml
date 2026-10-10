@@ -1,0 +1,40 @@
+# Example entity config for `utxoproof portfolio --entities this-file`.
+# Copy next to your data dir and edit: every [[entities]] row is a wallet,
+# bank account or exchange balance shown on the overview page.
+#
+#   cp examples/entities.example.toml ~/utxoproof-data/entities.toml
+#
+# UTXO assignment: unspent outputs from the synced on-chain DB land in the
+# entity whose `wallet` matches the synced wallet name (default
+# `utxoproof_watchonly`, the same default as `setup`/`sync --wallet`). With a
+# single [[entities]] entry everything lands there regardless of `wallet`.
+
+[[entities]]
+id = "ledger-savings"
+kind = "wallet"
+label = "Ledger Nano — savings"
+detail = "BIP84 account"
+wallet = "utxoproof_watchonly"
+
+[[entities]]
+id = "ing-savings"
+kind = "bank"
+label = "ING savings"
+detail = "BE68 **** 7034"
+
+[[entities]]
+id = "kraken-eur"
+kind = "exchange"
+label = "Kraken EUR balance"
+detail = "Uninvested euros"
+
+# Static euro balances (no chain data needed).
+[[fiat]]
+entity_id = "ing-savings"
+amount_eur = "12500"
+note = "Savings buffer"
+
+[[fiat]]
+entity_id = "kraken-eur"
+amount_eur = "3200"
+note = "Dry powder"

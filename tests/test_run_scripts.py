@@ -4,6 +4,7 @@ Two modes:
   MODE=prepare   (default in the script)   — stops if check reports shortfalls
   MODE=refresh   — idempotent rerun; shortfalls print but do not stop
 """
+
 import os
 import stat
 import subprocess
@@ -20,8 +21,8 @@ def _run(script: str, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
         os.path.dirname(__import__("sys").executable), "utxoproof"
     )
     # S603/S607: fixed argv (bash + repo-relative script under test); no user input.
-    return subprocess.run(
-        ["bash", str(REPO / "examples" / script)],
+    return subprocess.run(  # noqa: S603
+        ["bash", str(REPO / "examples" / script)],  # noqa: S607
         capture_output=True,
         text=True,
         env=merged,

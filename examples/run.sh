@@ -135,16 +135,18 @@ stage_portfolio() {
     log "portfolio: build overview + entity pages"
     if [ -n "$ENTITIES_FILE" ] && [ -f "$DATA_DIR/utxoproof.db" ]; then
         if [ -f "$ENTITIES_FILE" ]; then
-            "$UTXOPROOF_BIN" portfolio --db "$DATA_DIR/utxoproof.db" \
-                --entities "$ENTITIES_FILE" \
+            port_out=$("$UTXOPROOF_BIN" portfolio --db "$DATA_DIR/utxoproof.db" \
+                --entities "$ENTITIES_FILE" --wallet "$WALLET" \
                 --price "${BTC_PRICE:-40000}" \
-                --out "$DATA_DIR/portfolio" 2>/dev/null || \
+                --out "$DATA_DIR/portfolio" 2>&1) || {
                 log "warning: portfolio build skipped (entity config or DB issue)"
+                printf '%s\n' "$port_out"
+            }
         else
             log "warning: entities file not found: $ENTITIES_FILE"
         fi
     elif [ -n "$ENTITIES_FILE" ]; then
-        log "note: portfolio skipped — DB $DATA_DIR/utxoproof.db not found; run prepare.sh first"
+        log "note: portfolio skipped — DB $DATA_DIR/utxoproof.db not found; run with MODE=prepare first"
     else
         log "note: portfolio skipped (set ENTITIES_FILE to enable entity overview)"
     fi
@@ -204,6 +206,7 @@ case "$MODE" in
                 fail "coverage has shortfalls ($shortfalls) — aborting per prepare mode; investigate with 'utxoproof check' or run with MODE=refresh"
                 ;;
         esac
+        stage_compute
         stage_setup
         stage_sync
         stage_portfolio
